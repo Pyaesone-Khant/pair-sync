@@ -34,11 +34,22 @@ class FakeMessageRepository implements IMessageRepository {
 
 class FakeSignalingPort implements ISignalingPort {
   public dispatchedEnvelopes: CiphertextEnvelope[] = [];
+  async joinPairRoom(): Promise<void> {}
+  async leavePairRoom(): Promise<void> {}
   async sendEnvelope(envelope: CiphertextEnvelope): Promise<void> {
     this.dispatchedEnvelopes.push(envelope);
   }
   async broadcastLocation(): Promise<void> {}
   async sendPeerGaze(): Promise<void> {}
+  onEnvelopeReceived(): () => void {
+    return () => {};
+  }
+  onLocationReceived(): () => void {
+    return () => {};
+  }
+  onPeerGazeReceived(): () => void {
+    return () => {};
+  }
 }
 
 describe('SendMessageUseCase (ADR 0004 & E2EE Blind Relay)', () => {

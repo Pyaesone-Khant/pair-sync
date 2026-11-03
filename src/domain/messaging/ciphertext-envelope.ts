@@ -48,10 +48,10 @@ export class CiphertextEnvelope {
   }
 
   /**
-   * Serializes the envelope into a JSON wire string for blind relay transmission.
+   * Returns a plain JavaScript object representation of the envelope.
    */
-  public serialize(): string {
-    return JSON.stringify({
+  public toObject(): CiphertextEnvelopeProperties {
+    return {
       id: this.id,
       senderDeviceId: this.senderDeviceId,
       recipientDeviceId: this.recipientDeviceId,
@@ -60,7 +60,14 @@ export class CiphertextEnvelope {
       sequenceNumber: this.sequenceNumber,
       ratchetPublicKey: this.ratchetPublicKey,
       timestamp: this.timestamp,
-    });
+    };
+  }
+
+  /**
+   * Serializes the envelope into a JSON wire string for blind relay transmission.
+   */
+  public serialize(): string {
+    return JSON.stringify(this.toObject());
   }
 
   /**
