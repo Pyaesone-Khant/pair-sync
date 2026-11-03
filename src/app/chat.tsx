@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DesignTokens } from '../constants/theme';
+import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
+import { CiphertextEnvelope } from '../domain/messaging/ciphertext-envelope';
 
 interface LocalChatMessage {
   id: string;
@@ -24,6 +26,7 @@ interface LocalChatMessage {
 
 export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
+  const [signalingChannel] = useState(() => new SupabaseSignalingChannel());
   const [messages, setMessages] = useState<LocalChatMessage[]>([
     {
       id: '1',
@@ -41,30 +44,98 @@ export default function ChatScreen() {
     },
   ]);
 
-  const handleSendMessage = () => {
+  useEffect(() => {
+    signalingChannel.joinPairRoom('pair-primary');
+
+    const unsubscribe = signalingChannel.onEnvelopeReceived((envelope) => {
+      // Decode incoming message envelope from peer
+      const incomingText = envelope.ciphertext.startsWith('plain:')
+        ? envelope.ciphertext.replace('plain:', '')
+        : `[Encrypted Ratchet Payload: ${envelope.ciphertext.slice(0, 12)}...]`;
+
+      const incomingMessage: LocalChatMessage = {
+        id: envelope.id,
+        sender: 'partner',
+        text: incomingText,
+        timestamp: new Date(envelope.timestamp).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        isEncrypted: true,
+      };
+
+      setMessages((prev) => [...prev, incomingMessage]);
+    });
+
+    return () => {
+      unsubscribe();
+      signalingChannel.leavePairRoom();
+    };
+  }, [signalingChannel]);
+
+  const handleSendMessage = async () => {
     if (!inputText.trim()) return;
 
+    const textToSend = inputText.trim();
+    const newId = Date.now().toString();
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const newMessage: LocalChatMessage = {
-      id: Date.now().toString(),
+      id: newId,
       sender: 'me',
-      text: inputText.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: textToSend,
+      timestamp: timeStr,
       isEncrypted: true,
     };
 
     setMessages((prev) => [...prev, newMessage]);
     setInputText('');
+
+    // Broadcast through blind relay to remote partner device
+    try {
+      const envelope = new CiphertextEnvelope({
+        id: newId,
+        senderDeviceId: 'dev-local',
+        recipientDeviceId: 'dev-peer',
+        iv: '123456789012',
+        ciphertext: `plain:${textToSend}`,
+        sequenceNumber: messages.length + 1,
+        ratchetPublicKey: 'pub-key-ratchet',
+        timestamp: Date.now(),
+      });
+      await signalingChannel.sendEnvelope(envelope);
+    } catch (err) {
+      console.warn('[ChatScreen] Failed to broadcast envelope:', err);
+    }
   };
 
-  const handleShareLocationPing = () => {
+  const handleShareLocationPing = async () => {
+    const pingText = '📍 Live Location Ping: 37.7749° N, 122.4194° W (Near Market St)';
+    const newId = Date.now().toString();
     const locationMessage: LocalChatMessage = {
-      id: Date.now().toString(),
+      id: newId,
       sender: 'me',
-      text: '📍 Live Location Ping: 37.7749° N, 122.4194° W (Near Market St)',
+      text: pingText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isEncrypted: true,
     };
     setMessages((prev) => [...prev, locationMessage]);
+
+    try {
+      const envelope = new CiphertextEnvelope({
+        id: newId,
+        senderDeviceId: 'dev-local',
+        recipientDeviceId: 'dev-peer',
+        iv: '123456789012',
+        ciphertext: `plain:${pingText}`,
+        sequenceNumber: messages.length + 1,
+        ratchetPublicKey: 'pub-key-ratchet',
+        timestamp: Date.now(),
+      });
+      await signalingChannel.sendEnvelope(envelope);
+    } catch (err) {
+      console.warn('[ChatScreen] Failed to broadcast location ping envelope:', err);
+    }
   };
 
   return (

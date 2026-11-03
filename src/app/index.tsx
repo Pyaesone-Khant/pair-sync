@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocationStore } from '../presentation/stores/location-store';
 import { PartnerStatusCard } from '../presentation/components/PartnerStatusCard';
 import { LocationTrackingStateMachine, LocationStateMode } from '../domain/location/location-state-machine';
+import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
+import { HardwareLocationEngine } from '../infrastructure/location/hardware-location-engine';
 
 const { width, height } = Dimensions.get('window');
 
@@ -55,7 +57,11 @@ export default function RadarScreen() {
     },
   ]);
 
+  // Initialize live Supabase blind relay channel
+  const [signalingChannel] = useState(() => new SupabaseSignalingChannel());
+
   useEffect(() => {
+    // 1. Initial fallback seeds for simulator preview before GPS fix
     if (!myTelemetry.coordinate) {
       updateMyTelemetry({
         coordinate: { latitude: 37.7749, longitude: -122.4194 },
@@ -73,7 +79,57 @@ export default function RadarScreen() {
         motionActivity: 'Walking',
       });
     }
-  }, [myTelemetry.coordinate, peerTelemetry.coordinate, updateMyTelemetry, updatePeerTelemetry]);
+
+    // 2. Connect to live Supabase Pair broadcast room
+    signalingChannel.joinPairRoom('pair-primary');
+
+    // 3. Listen for incoming live peer location packets
+    const unsubscribeLocation = signalingChannel.onLocationReceived((payload) => {
+      const motion =
+        payload.motionActivity === 'Driving' || payload.motionActivity === 'Walking'
+          ? payload.motionActivity
+          : 'Stationary';
+
+      updatePeerTelemetry({
+        coordinate: { latitude: payload.latitude, longitude: payload.longitude },
+        batteryPercent: payload.batteryPercent ?? null,
+        isCharging: Boolean(payload.isCharging),
+        motionActivity: motion,
+      });
+    });
+
+    const unsubscribeGaze = signalingChannel.onPeerGazeReceived((isViewing) => {
+      setPeerViewingMe(isViewing);
+    });
+
+    // 4. Start physical hardware GPS & Battery tracking engine
+    const locationEngine = new HardwareLocationEngine({
+      stateMachine,
+      signalingPort: signalingChannel,
+      onTelemetryUpdated: (telemetry) => {
+        const motion =
+          telemetry.motionActivity === 'Driving' || telemetry.motionActivity === 'Walking'
+            ? telemetry.motionActivity
+            : 'Stationary';
+
+        updateMyTelemetry({
+          coordinate: telemetry.coordinate,
+          batteryPercent: telemetry.batteryPercent ?? null,
+          isCharging: Boolean(telemetry.isCharging),
+          motionActivity: motion,
+        });
+      },
+    });
+
+    locationEngine.start();
+
+    return () => {
+      locationEngine.stop();
+      unsubscribeLocation();
+      unsubscribeGaze();
+      signalingChannel.leavePairRoom();
+    };
+  }, [stateMachine, signalingChannel, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
 
   const fitBothInView = () => {
     if (!myTelemetry.coordinate || !peerTelemetry.coordinate || !mapRef.current) return;
@@ -131,10 +187,12 @@ export default function RadarScreen() {
 
   const handleTogglePeerGaze = () => {
     const isCurrentlyViewing = stateMachine.getCurrentMode() === LocationStateMode.LiveViewing;
-    stateMachine.onPeerGazeChanged({ isViewing: !isCurrentlyViewing });
+    const nextViewingState = !isCurrentlyViewing;
+    stateMachine.onPeerGazeChanged({ isViewing: nextViewingState });
     const newMode = stateMachine.getCurrentMode();
     setCurrentMode(newMode);
-    setPeerViewingMe(!isCurrentlyViewing);
+    setPeerViewingMe(nextViewingState);
+    signalingChannel.sendPeerGaze(nextViewingState);
   };
 
   const myCoord = myTelemetry.coordinate ?? { latitude: 37.7749, longitude: -122.4194 };
