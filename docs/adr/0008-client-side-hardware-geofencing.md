@@ -1,0 +1,3 @@
+# Client-Side Autonomous Hardware Geofencing
+
+We chose autonomous client-side hardware geofencing over server-side PostGIS spatial evaluation. Coordinates of personal Places ("Home", "Work") remain stored locally in encrypted SQLite and are registered directly with native operating system geofencing APIs (`CLCircularRegion` on iOS and Android Geofencing API). When an entry or exit occurs, the client dispatches an end-to-end encrypted event to the peer. This preserves complete zero-knowledge location privacy and saves battery by eliminating the need to upload stationary GPS breadcrumbs to the cloud.

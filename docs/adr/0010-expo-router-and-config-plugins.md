@@ -1,0 +1,3 @@
+# Expo Router with Declarative Config Plugins
+
+We chose Expo Router with Expo Prebuild and declarative Config Plugins rather than a bare React Native project or legacy imperative navigation. Because this application requires native capabilities (WebRTC, MapLibre, CallKit telephony, and background location tracking), it cannot run in standard Expo Go. Config Plugins allow us to declare native permissions, background modes, and VoIP entitlements in `app.json` with zero manual editing of fragile Xcode or Android Gradle files, while Expo Router provides file-based routing and deep linking for pairing invite URLs.

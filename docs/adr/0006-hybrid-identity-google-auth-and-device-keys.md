@@ -1,0 +1,3 @@
+# Hybrid Identity: Google Auth with Device Keypair Pairing
+
+We separated account-level identity from cryptographic authorization. Google Sign-In (via Supabase Auth) authenticates users to prevent database spam, secure push notification tokens, and manage account lifecycle. However, Google credentials do not authorize peer access or decrypt content; communication requires an out-of-band Pairing Ceremony (QR code or safety-link scan) where device-generated public keys are physically exchanged. This delivers frictionless Google authentication without sacrificing zero-knowledge end-to-end encryption.
