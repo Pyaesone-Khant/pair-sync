@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -15,6 +15,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Circle } from 'react-native-maps';
+import { getDatabaseClient } from '../infrastructure/database/database-client';
+import { Place } from '../domain/places/place';
+import { useLocationStore } from '../presentation/stores/location-store';
 
 export interface SafePlace {
   id: string;
@@ -27,39 +30,126 @@ export interface SafePlace {
   lastEvent: string;
 }
 
+const DEFAULT_SEEDS: Array<{
+  id: string;
+  name: string;
+  category: 'home' | 'work' | 'gym' | 'other';
+  radiusMeters: number;
+  latitude: number;
+  longitude: number;
+}> = [
+  {
+    id: '1',
+    name: 'Home',
+    category: 'home',
+    radiusMeters: 100,
+    latitude: 37.7749,
+    longitude: -122.4194,
+  },
+  {
+    id: '2',
+    name: 'Office',
+    category: 'work',
+    radiusMeters: 150,
+    latitude: 37.7899,
+    longitude: -122.4014,
+  },
+  {
+    id: '3',
+    name: 'Fitness Center',
+    category: 'gym',
+    radiusMeters: 80,
+    latitude: 37.765,
+    longitude: -122.42,
+  },
+];
+
 export default function PlacesScreen() {
-  const [places, setPlaces] = useState<SafePlace[]>([
-    {
-      id: '1',
-      name: 'Home',
-      category: 'home',
-      radiusMeters: 100,
-      latitude: 37.7749,
-      longitude: -122.4194,
-      partnerPresent: false,
-      lastEvent: 'Left at 08:30 AM',
-    },
-    {
-      id: '2',
-      name: 'Office',
-      category: 'work',
-      radiusMeters: 150,
-      latitude: 37.7899,
-      longitude: -122.4014,
-      partnerPresent: true,
-      lastEvent: 'Arrived at 09:15 AM',
-    },
-    {
-      id: '3',
-      name: 'Fitness Center',
-      category: 'gym',
-      radiusMeters: 80,
-      latitude: 37.765,
-      longitude: -122.42,
-      partnerPresent: false,
-      lastEvent: 'Visited yesterday',
-    },
-  ]);
+  const peerTelemetry = useLocationStore((state) => state.peerTelemetry);
+  const [places, setPlaces] = useState<SafePlace[]>([]);
+
+  const placeRepo = useMemo(() => getDatabaseClient().getRepositories().placeRepo, []);
+
+  // Load places from SQLite database on mount
+  useEffect(() => {
+    let mounted = true;
+    async function loadPlaces() {
+      try {
+        const stored = await placeRepo.getAllPlaces();
+        if (!mounted) return;
+
+        if (stored.length === 0) {
+          // Seed initial default places into SQLite
+          for (const seed of DEFAULT_SEEDS) {
+            await placeRepo.savePlace(
+              new Place({
+                id: seed.id,
+                name: seed.name,
+                coordinate: { latitude: seed.latitude, longitude: seed.longitude },
+                radiusMeters: seed.radiusMeters,
+              })
+            );
+          }
+          setPlaces(
+            DEFAULT_SEEDS.map((s) => ({
+              ...s,
+              partnerPresent: false,
+              lastEvent: 'Geofence active',
+            }))
+          );
+        } else {
+          setPlaces(
+            stored.map((p) => {
+              const lowerName = p.name.toLowerCase();
+              let cat: 'home' | 'work' | 'gym' | 'other' = 'other';
+              if (lowerName.includes('home')) cat = 'home';
+              else if (lowerName.includes('office') || lowerName.includes('work')) cat = 'work';
+              else if (lowerName.includes('gym') || lowerName.includes('fitness')) cat = 'gym';
+
+              return {
+                id: p.id,
+                name: p.name,
+                category: cat,
+                radiusMeters: p.radiusMeters,
+                latitude: p.coordinate.latitude,
+                longitude: p.coordinate.longitude,
+                partnerPresent: false,
+                lastEvent: 'Geofence active',
+              };
+            })
+          );
+        }
+      } catch (err) {
+        console.warn('[PlacesScreen] Failed to load places from SQLite:', err);
+      }
+    }
+
+    loadPlaces();
+    return () => {
+      mounted = false;
+    };
+  }, [placeRepo]);
+
+  // Dynamically calculate partner presence using the Place domain entity
+  const displayPlaces = useMemo(() => {
+    return places.map((p) => {
+      let isPresent = p.partnerPresent;
+      if (peerTelemetry.coordinate) {
+        const placeEntity = new Place({
+          id: p.id,
+          name: p.name,
+          coordinate: { latitude: p.latitude, longitude: p.longitude },
+          radiusMeters: p.radiusMeters,
+        });
+        isPresent = placeEntity.containsCoordinate(peerTelemetry.coordinate);
+      }
+      return {
+        ...p,
+        partnerPresent: isPresent,
+        lastEvent: isPresent ? 'Partner currently inside boundary' : p.lastEvent,
+      };
+    });
+  }, [places, peerTelemetry.coordinate]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
@@ -89,10 +179,24 @@ export default function PlacesScreen() {
     setModalVisible(true);
   };
 
-  const handleSavePlace = () => {
+  const handleSavePlace = async () => {
     if (!nameInput.trim()) {
       Alert.alert('Validation Error', 'Please enter a name for the place.');
       return;
+    }
+
+    const placeId = editingPlaceId ?? Date.now().toString();
+    const domainPlace = new Place({
+      id: placeId,
+      name: nameInput.trim(),
+      coordinate: { latitude: targetCoord.latitude, longitude: targetCoord.longitude },
+      radiusMeters: radiusInput,
+    });
+
+    try {
+      await placeRepo.savePlace(domainPlace);
+    } catch (err) {
+      console.warn('[PlacesScreen] Failed to persist place to SQLite:', err);
     }
 
     if (editingPlaceId) {
@@ -112,7 +216,7 @@ export default function PlacesScreen() {
       );
     } else {
       const newPlace: SafePlace = {
-        id: Date.now().toString(),
+        id: placeId,
         name: nameInput.trim(),
         category: categoryInput,
         radiusMeters: radiusInput,
@@ -136,7 +240,12 @@ export default function PlacesScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            try {
+              await placeRepo.deletePlace(id);
+            } catch (err) {
+              console.warn('[PlacesScreen] Failed to delete place from SQLite:', err);
+            }
             setPlaces((prev) => prev.filter((p) => p.id !== id));
           },
         },
@@ -158,7 +267,7 @@ export default function PlacesScreen() {
     );
   };
 
-  const presentCount = places.filter((p) => p.partnerPresent).length;
+  const presentCount = displayPlaces.filter((p) => p.partnerPresent).length;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -188,7 +297,7 @@ export default function PlacesScreen() {
           <View style={styles.statusBannerLeft}>
             <View style={styles.statusIndicatorDot} />
             <Text style={styles.statusBannerTitle}>
-              {places.length} Monitored Zones
+              {displayPlaces.length} Monitored Zones
             </Text>
             <Text style={styles.statusBannerDivider}>•</Text>
             <Text style={styles.statusBannerHighlight}>
@@ -203,7 +312,7 @@ export default function PlacesScreen() {
 
         {/* Places List */}
         <FlatList
-          data={places}
+          data={displayPlaces}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}

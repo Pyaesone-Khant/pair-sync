@@ -77,8 +77,23 @@ export class HardwareLocationEngine {
     }
     if (!this.batteryModule) {
       try {
-        const Battery = await import('expo-battery');
-        this.batteryModule = Battery as unknown as IBatteryModule;
+        let isNativeBatteryAvailable = true;
+        try {
+          const expo = await import('expo');
+          if (typeof expo.requireOptionalNativeModule === 'function') {
+            const mod = expo.requireOptionalNativeModule('ExpoBattery');
+            if (!mod) {
+              isNativeBatteryAvailable = false;
+            }
+          }
+        } catch {
+          // Fall back gracefully in non-expo environments
+        }
+
+        if (isNativeBatteryAvailable) {
+          const Battery = await import('expo-battery');
+          this.batteryModule = Battery as unknown as IBatteryModule;
+        }
       } catch (err) {
         console.warn('[HardwareLocationEngine] Failed to load expo-battery:', err);
       }
@@ -103,7 +118,11 @@ export class HardwareLocationEngine {
         return false;
       }
 
-      await this.locationModule.requestBackgroundPermissionsAsync();
+      try {
+        await this.locationModule.requestBackgroundPermissionsAsync();
+      } catch (bgErr) {
+        console.warn('[HardwareLocationEngine] Background location permission skipped or denied:', bgErr);
+      }
 
       const updateInterval = this.stateMachine.getUpdateIntervalSeconds() * 1000;
       const isHighAcc = this.stateMachine.isHighAccuracyGpsActive();
