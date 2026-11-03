@@ -9,8 +9,10 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { DesignTokens } from '../constants/theme';
 
 interface LocalChatMessage {
   id: string;
@@ -54,17 +56,67 @@ export default function ChatScreen() {
     setInputText('');
   };
 
+  const handleShareLocationPing = () => {
+    const locationMessage: LocalChatMessage = {
+      id: Date.now().toString(),
+      sender: 'me',
+      text: '📍 Live Location Ping: 37.7749° N, 122.4194° W (Near Market St)',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isEncrypted: true,
+    };
+    setMessages((prev) => [...prev, locationMessage]);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* E2EE Security Banner */}
+        {/* Consistent Top Header */}
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.partnerHeaderInfo}>
+              <View style={styles.partnerAvatarCircle}>
+                <Text style={styles.partnerAvatarText}>P</Text>
+                <View style={styles.onlineDot} />
+              </View>
+              <View style={styles.titleContainer}>
+                <Text style={styles.title}>My Partner</Text>
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  End-to-End Encrypted • Direct Stream
+                </Text>
+              </View>
+            </View>
+
+            {/* Quick Call Actions */}
+            <View style={styles.headerActionGroup}>
+              <TouchableOpacity
+                style={styles.headerActionBtn}
+                onPress={() => Alert.alert('Initiate Call', 'Connecting direct P2P audio call with CallKit...')}
+                accessibilityLabel="Start voice call">
+                <Ionicons name="call" size={17} color="#10B981" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerActionBtn}
+                onPress={() => Alert.alert('Initiate Video', 'Connecting direct WebRTC video stream...')}
+                accessibilityLabel="Start video call">
+                <Ionicons name="videocam" size={18} color="#38BDF8" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Security Strip Banner */}
         <View style={styles.securityBanner}>
-          <Ionicons name="shield-checkmark" size={13} color="#10B981" />
-          <Text style={styles.securityBannerText}>
-            End-to-End Encrypted • Zero-Knowledge Private Chat
-          </Text>
+          <View style={styles.securityBannerLeft}>
+            <Ionicons name="shield-checkmark" size={13} color="#10B981" />
+            <Text style={styles.securityBannerText}>
+              Zero-Knowledge Blind Relay • Ephemeral SQLite
+            </Text>
+          </View>
+          <View style={styles.securityBadge}>
+            <Text style={styles.securityBadgeText}>Ratchet Active</Text>
+          </View>
         </View>
 
         {/* Message Thread */}
@@ -72,6 +124,7 @@ export default function ChatScreen() {
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messageList}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
             const isMe = item.sender === 'me';
             return (
@@ -87,7 +140,13 @@ export default function ChatScreen() {
                   ]}>
                   <Text style={styles.messageText}>{item.text}</Text>
                   <View style={styles.messageFooter}>
-                    <Text style={styles.timestampText}>{item.timestamp}</Text>
+                    <Text
+                      style={[
+                        styles.timestampText,
+                        isMe ? styles.myTimestampText : styles.partnerTimestampText,
+                      ]}>
+                      {item.timestamp}
+                    </Text>
                     {item.isEncrypted && (
                       <Ionicons
                         name="lock-closed"
@@ -104,6 +163,13 @@ export default function ChatScreen() {
 
         {/* Composer Input Bar */}
         <View style={styles.composerContainer}>
+          <TouchableOpacity
+            style={styles.pingLocationBtn}
+            onPress={handleShareLocationPing}
+            accessibilityLabel="Share live location ping">
+            <Ionicons name="location-outline" size={19} color="#38BDF8" />
+          </TouchableOpacity>
+
           <TextInput
             style={styles.textInput}
             placeholder="Type encrypted message..."
@@ -111,6 +177,7 @@ export default function ChatScreen() {
             value={inputText}
             onChangeText={setInputText}
           />
+
           <TouchableOpacity
             style={[
               styles.sendButton,
@@ -140,24 +207,117 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 70,
   },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  partnerHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  partnerAvatarCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#F43F5E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    position: 'relative',
+  },
+  partnerAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#0B0F17',
+  },
+  titleContainer: {
+    flex: 1,
+  },
+  title: {
+    color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+  subtitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  headerActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
   securityBanner: {
     backgroundColor: '#151B26',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    paddingVertical: 7,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#232B3A',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+  },
+  securityBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
   securityBannerText: {
-    color: '#10B981',
-    fontSize: 12,
+    color: '#E2E8F0',
+    fontSize: 11,
     fontWeight: '500',
   },
+  securityBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  securityBadgeText: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '600',
+  },
   messageList: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
     gap: 12,
   },
   messageBubbleWrapper: {
@@ -180,10 +340,10 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   partnerMessageBubble: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#151B26',
     borderBottomLeftRadius: 4,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#232B3A',
   },
   messageText: {
     color: '#F8FAFC',
@@ -198,20 +358,34 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   timestampText: {
-    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 10,
+    fontVariant: ['tabular-nums'],
   },
-  lockIcon: {
-    fontSize: 10,
+  myTimestampText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  partnerTimestampText: {
+    color: '#64748B',
   },
   composerContainer: {
     flexDirection: 'row',
-    padding: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     backgroundColor: '#151B26',
     borderTopWidth: 1,
     borderTopColor: '#232B3A',
     alignItems: 'center',
     gap: 10,
+  },
+  pingLocationBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   textInput: {
     flex: 1,
@@ -225,9 +399,9 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#1E293B',
     justifyContent: 'center',
     alignItems: 'center',
@@ -237,10 +411,5 @@ const styles = StyleSheet.create({
   sendButtonActive: {
     backgroundColor: '#38BDF8',
     borderColor: '#38BDF8',
-  },
-  sendButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
   },
 });

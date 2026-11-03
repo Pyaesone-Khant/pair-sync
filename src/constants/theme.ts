@@ -63,3 +63,48 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+/**
+ * Global design tokens adhering to frontend-design and Vercel React Native design principles.
+ * Ensures strict cross-screen UI consistency.
+ */
+export const DesignTokens = {
+  colors: {
+    bgPrimary: '#0B0F17',
+    bgCard: '#151B26',
+    bgElevated: '#1E293B',
+    borderSubtle: '#232B3A',
+    borderFocus: '#334155',
+    accentCyan: '#38BDF8',
+    accentEmerald: '#10B981',
+    accentRose: '#F43F5E',
+    accentAmber: '#F59E0B',
+    textPrimary: '#F8FAFC',
+    textSecondary: '#94A3B8',
+    textMuted: '#64748B',
+  },
+  radii: {
+    xs: 6,
+    sm: 8,
+    md: 10,
+    lg: 14,
+    xl: 18,
+    full: 9999,
+  },
+  typography: {
+    screenTitle: {
+      fontSize: 22,
+      fontWeight: '700' as const,
+      letterSpacing: -0.5,
+    },
+    screenSubtitle: {
+      fontSize: 12,
+      fontWeight: '400' as const,
+    },
+    cardTitle: {
+      fontSize: 17,
+      fontWeight: '600' as const,
+      letterSpacing: -0.3,
+    },
+  },
+} as const;

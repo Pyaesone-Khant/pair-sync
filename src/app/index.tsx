@@ -429,9 +429,9 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   batteryEngineCard: {
-    backgroundColor: 'rgba(21, 27, 38, 0.92)',
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: 'rgba(21, 27, 38, 0.95)',
+    borderRadius: 18,
+    padding: 14,
     marginHorizontal: 16,
     marginBottom: 8,
     borderWidth: 1,
