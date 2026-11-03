@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { DeviceKeyManager, InMemoryKeyStore } from '../infrastructure/security/device-key-manager';
 import { PairDeviceUseCase, PairingPayload } from '../application/use-cases/pair-device.usecase';
 import { SqliteDatabaseAdapter, SqlitePairRepository } from '../infrastructure/database/sqlite-repositories';
@@ -56,6 +57,11 @@ export default function PairingScreen() {
           <TouchableOpacity
             style={[styles.switchBtn, activeTab === 'myCode' && styles.switchBtnActive]}
             onPress={() => setActiveTab('myCode')}>
+            <Ionicons
+              name="qr-code-outline"
+              size={14}
+              color={activeTab === 'myCode' ? '#38BDF8' : '#94A3B8'}
+            />
             <Text style={[styles.switchBtnText, activeTab === 'myCode' && styles.switchBtnTextActive]}>
               My QR Code
             </Text>
@@ -64,6 +70,11 @@ export default function PairingScreen() {
           <TouchableOpacity
             style={[styles.switchBtn, activeTab === 'scanner' && styles.switchBtnActive]}
             onPress={() => setActiveTab('scanner')}>
+            <Ionicons
+              name="scan-outline"
+              size={14}
+              color={activeTab === 'scanner' ? '#38BDF8' : '#94A3B8'}
+            />
             <Text style={[styles.switchBtnText, activeTab === 'scanner' && styles.switchBtnTextActive]}>
               Scan Partner
             </Text>
@@ -75,7 +86,7 @@ export default function PairingScreen() {
             {/* Visual QR Simulation Box */}
             <View style={styles.qrBox}>
               <View style={styles.qrInner}>
-                <Text style={styles.qrIcon}>📱</Text>
+                <Ionicons name="qr-code" size={68} color="#0B0F17" />
                 <Text style={styles.qrLabel}>PairSync Hardware Key</Text>
                 <Text style={styles.qrSubtext}>Have your partner scan this screen</Text>
               </View>
@@ -83,7 +94,10 @@ export default function PairingScreen() {
 
             {/* Cryptographic Safety Number */}
             <View style={styles.safetyCard}>
-              <Text style={styles.safetyLabel}>Cryptographic Safety Number</Text>
+              <View style={styles.safetyHeaderRow}>
+                <Ionicons name="shield-checkmark-outline" size={14} color="#10B981" />
+                <Text style={styles.safetyLabel}>Cryptographic Safety Number</Text>
+              </View>
               <Text style={styles.safetyNumber}>9481 • 2048 • 7719 • 3102</Text>
               <Text style={styles.safetyExplanation}>
                 Verify these digits match on your partner's device to confirm zero tampering.
@@ -93,6 +107,7 @@ export default function PairingScreen() {
             <TouchableOpacity
               style={styles.copyLinkBtn}
               onPress={() => Alert.alert('Copied', 'Secure invite deep link copied to clipboard')}>
+              <Ionicons name="copy-outline" size={15} color="#38BDF8" />
               <Text style={styles.copyLinkText}>Copy Secure Remote Invite Link</Text>
             </TouchableOpacity>
           </View>
@@ -109,8 +124,13 @@ export default function PairingScreen() {
             </View>
 
             <TouchableOpacity style={styles.actionBtn} onPress={handleSimulateScan}>
+              <Ionicons
+                name={isPaired ? 'checkmark-circle' : 'camera-outline'}
+                size={18}
+                color="#0B0F17"
+              />
               <Text style={styles.actionBtnText}>
-                {isPaired ? '✓ Bond Verified & Active' : 'Simulate Partner Scan'}
+                {isPaired ? 'Bond Verified & Active' : 'Simulate Partner Scan'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -158,9 +178,12 @@ const styles = StyleSheet.create({
   },
   switchBtn: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: 10,
     borderRadius: 10,
-    alignItems: 'center',
   },
   switchBtnActive: {
     backgroundColor: '#1E293B',
@@ -225,6 +248,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 12,
   },
+  safetyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
   safetyLabel: {
     color: '#94A3B8',
     fontSize: 12,
@@ -246,10 +275,13 @@ const styles = StyleSheet.create({
   },
   copyLinkBtn: {
     backgroundColor: '#1E293B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     width: '100%',
     paddingVertical: 14,
     borderRadius: 14,
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#334155',
   },
@@ -324,10 +356,13 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     backgroundColor: '#38BDF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     width: '100%',
     paddingVertical: 14,
     borderRadius: 14,
-    alignItems: 'center',
     marginTop: 24,
   },
   actionBtnText: {

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocationStore } from '../presentation/stores/location-store';
 import { PartnerStatusCard } from '../presentation/components/PartnerStatusCard';
 import { LocationTrackingStateMachine, LocationStateMode } from '../domain/location/location-state-machine';
@@ -180,13 +181,34 @@ export default function RadarScreen() {
         <Marker coordinate={peerCoord} title="Partner" anchor={{ x: 0.5, y: 0.8 }}>
           <View style={styles.peerMarkerContainer}>
             <View style={styles.peerCalloutBubble}>
+              <Ionicons
+                name={
+                  (peerTelemetry.batteryPercent ?? 0) <= 20
+                    ? 'battery-dead'
+                    : (peerTelemetry.batteryPercent ?? 0) <= 50
+                    ? 'battery-half'
+                    : 'battery-full'
+                }
+                size={12}
+                color={peerTelemetry.batteryPercent !== null && peerTelemetry.batteryPercent <= 20 ? '#EF4444' : '#10B981'}
+              />
               <Text style={styles.peerCalloutText}>
-                {peerTelemetry.batteryPercent !== null && `🔋 ${peerTelemetry.batteryPercent}% • `}
-                {peerTelemetry.motionActivity === 'Driving'
-                  ? '🚗 Driving'
-                  : peerTelemetry.motionActivity === 'Walking'
-                  ? '🚶 Walking'
-                  : '🛋️ At Place'}
+                {peerTelemetry.batteryPercent !== null ? `${peerTelemetry.batteryPercent}%` : '--%'}
+              </Text>
+              <Text style={styles.peerCalloutDivider}>•</Text>
+              <Ionicons
+                name={
+                  peerTelemetry.motionActivity === 'Driving'
+                    ? 'car-outline'
+                    : peerTelemetry.motionActivity === 'Walking'
+                    ? 'walk-outline'
+                    : 'home-outline'
+                }
+                size={12}
+                color="#F8FAFC"
+              />
+              <Text style={styles.peerCalloutText}>
+                {peerTelemetry.motionActivity ?? 'Stationary'}
               </Text>
             </View>
             <View style={styles.peerAvatarCircle}>
@@ -202,7 +224,10 @@ export default function RadarScreen() {
         <View style={styles.topHeader}>
           <View>
             <Text style={styles.brandTitle}>PairSync</Text>
-            <Text style={styles.connectionBadge}>● Connected • End-to-End Encrypted</Text>
+            <View style={styles.connectionBadgeRow}>
+              <Ionicons name="lock-closed" size={11} color="#10B981" />
+              <Text style={styles.connectionBadge}>Encrypted • Connected</Text>
+            </View>
           </View>
 
           <View style={styles.modePill}>
@@ -214,16 +239,25 @@ export default function RadarScreen() {
 
       {/* Floating Camera Controls (Right Side) */}
       <View style={styles.floatingControls}>
-        <TouchableOpacity style={styles.circleBtn} onPress={fitBothInView}>
-          <Text style={styles.circleBtnText}>🎯</Text>
+        <TouchableOpacity
+          style={styles.circleBtn}
+          onPress={fitBothInView}
+          accessibilityLabel="Fit both peers in view">
+          <Ionicons name="scan-outline" size={20} color="#38BDF8" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.circleBtn} onPress={centerOnPartner}>
-          <Text style={styles.circleBtnText}>💖</Text>
+        <TouchableOpacity
+          style={styles.circleBtn}
+          onPress={centerOnPartner}
+          accessibilityLabel="Center camera on partner">
+          <Ionicons name="heart" size={20} color="#F43F5E" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.circleBtn} onPress={centerOnMe}>
-          <Text style={styles.circleBtnText}>📍</Text>
+        <TouchableOpacity
+          style={styles.circleBtn}
+          onPress={centerOnMe}
+          accessibilityLabel="Center camera on my location">
+          <Ionicons name="navigate" size={20} color="#38BDF8" />
         </TouchableOpacity>
       </View>
 
@@ -232,7 +266,10 @@ export default function RadarScreen() {
         {/* Battery Engine Info Card */}
         <View style={styles.batteryEngineCard}>
           <View style={styles.engineTextRow}>
-            <Text style={styles.engineTitle}>Adaptive Battery Engine</Text>
+            <View style={styles.engineTitleWithIcon}>
+              <Ionicons name="hardware-chip-outline" size={14} color="#38BDF8" />
+              <Text style={styles.engineTitle}>Adaptive Battery Engine</Text>
+            </View>
             <Text style={styles.engineStatus}>
               {stateMachine.isHighAccuracyGpsActive()
                 ? `High Accuracy (${stateMachine.getUpdateIntervalSeconds()}s)`
@@ -242,6 +279,11 @@ export default function RadarScreen() {
 
           <View style={styles.controlsRow}>
             <TouchableOpacity style={styles.controlBtn} onPress={handleToggleMotion}>
+              <Ionicons
+                name={currentMode === LocationStateMode.Transit ? 'pause-circle-outline' : 'walk-outline'}
+                size={14}
+                color="#F8FAFC"
+              />
               <Text style={styles.controlBtnText}>
                 {currentMode === LocationStateMode.Transit ? 'Stop Walking' : 'Simulate Walking'}
               </Text>
@@ -254,6 +296,15 @@ export default function RadarScreen() {
                   styles.controlBtnActive,
               ]}
               onPress={handleTogglePeerGaze}>
+              <Ionicons
+                name={
+                  stateMachine.getCurrentMode() === LocationStateMode.LiveViewing
+                    ? 'eye-off-outline'
+                    : 'eye-outline'
+                }
+                size={14}
+                color="#F8FAFC"
+              />
               <Text style={styles.controlBtnText}>
                 {stateMachine.getCurrentMode() === LocationStateMode.LiveViewing
                   ? 'Close Live Gaze'
@@ -309,11 +360,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.5,
   },
+  connectionBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
   connectionBadge: {
     color: '#10B981',
     fontSize: 12,
     fontWeight: '500',
-    marginTop: 2,
   },
   modePill: {
     flexDirection: 'row',
@@ -380,6 +436,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  engineTitleWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   engineTitle: {
     color: '#F1F5F9',
     fontSize: 13,
@@ -396,10 +457,14 @@ const styles = StyleSheet.create({
   },
   controlBtn: {
     flex: 1,
+    flexDirection: 'row',
     backgroundColor: '#1E293B',
     paddingVertical: 7,
+    paddingHorizontal: 10,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     borderWidth: 1,
     borderColor: '#334155',
   },
@@ -444,13 +509,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   peerCalloutBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(21, 27, 38, 0.95)',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#F43F5E',
     marginBottom: 4,
+    gap: 4,
+  },
+  peerCalloutDivider: {
+    color: '#64748B',
+    fontSize: 10,
+    marginHorizontal: 1,
   },
   peerCalloutText: {
     color: '#F8FAFC',

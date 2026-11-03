@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocationStore } from '../stores/location-store';
 import { calculateProximityRadar } from '../utils/radar';
 
@@ -12,7 +13,7 @@ export interface PartnerStatusCardProps {
 /**
  * Clean presentation card rendering ambient presence, battery telemetry,
  * motion activity, proximity radar, and direct P2P call action.
- * Adheres to Clean Architecture and ADR 0009.
+ * Adheres to Clean Architecture and frontend-design principles.
  */
 export const PartnerStatusCard: React.FC<PartnerStatusCardProps> = ({
   partnerName,
@@ -45,7 +46,8 @@ export const PartnerStatusCard: React.FC<PartnerStatusCardProps> = ({
             <Text style={styles.partnerName}>{partnerName}</Text>
             {isPeerViewingMe && (
               <View style={styles.liveBadge}>
-                <Text style={styles.liveBadgeText}>👁️ Live</Text>
+                <Ionicons name="eye" size={11} color="#EF4444" />
+                <Text style={styles.liveBadgeText}>Live</Text>
               </View>
             )}
           </View>
@@ -57,31 +59,48 @@ export const PartnerStatusCard: React.FC<PartnerStatusCardProps> = ({
             style={[
               styles.batteryPill,
               isLowBattery && styles.batteryPillWarning,
-            ]}
-          >
-            <Text style={styles.batteryText}>
-              {peerTelemetry.isCharging ? '⚡' : '🔋'}{' '}
-              {peerTelemetry.batteryPercent}%
-            </Text>
+            ]}>
+            <Ionicons
+              name={
+                peerTelemetry.isCharging
+                  ? 'flash'
+                  : isLowBattery
+                  ? 'battery-dead'
+                  : 'battery-half'
+              }
+              size={13}
+              color={peerTelemetry.isCharging ? '#10B981' : isLowBattery ? '#EF4444' : '#E5E7EB'}
+            />
+            <Text style={styles.batteryText}>{peerTelemetry.batteryPercent}%</Text>
           </View>
         )}
       </View>
 
       <View style={styles.telemetryRow}>
         <View style={styles.statusPill}>
+          <Ionicons
+            name={
+              peerTelemetry.motionActivity === 'Driving'
+                ? 'car-outline'
+                : peerTelemetry.motionActivity === 'Walking'
+                ? 'walk-outline'
+                : 'home-outline'
+            }
+            size={13}
+            color="#38BDF8"
+          />
           <Text style={styles.statusPillText}>
             {peerTelemetry.motionActivity === 'Driving'
-              ? '🚗 Driving'
+              ? 'Driving'
               : peerTelemetry.motionActivity === 'Walking'
-              ? '🚶 Walking'
-              : '🛋️ Stationary'}
+              ? 'Walking'
+              : 'Stationary'}
           </Text>
         </View>
 
         {radar.drivingEtaMinutes !== null && (
           <Text style={styles.etaText}>
-            ~{radar.drivingEtaMinutes} min drive • ~{radar.walkingEtaMinutes} min
-            walk
+            ~{radar.drivingEtaMinutes} min drive • ~{radar.walkingEtaMinutes} min walk
           </Text>
         )}
       </View>
@@ -89,16 +108,16 @@ export const PartnerStatusCard: React.FC<PartnerStatusCardProps> = ({
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={[styles.actionButton, styles.chatButton]}
-          onPress={onOpenChat}
-        >
-          <Text style={styles.chatButtonText}>Chat</Text>
+          onPress={onOpenChat}>
+          <Ionicons name="chatbubble-ellipses-outline" size={17} color="#FFFFFF" />
+          <Text style={styles.chatButtonText}>Message</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.actionButton, styles.callButton]}
-          onPress={onInitiateCall}
-        >
-          <Text style={styles.callButtonText}>📞 Call</Text>
+          onPress={onInitiateCall}>
+          <Ionicons name="call" size={17} color="#FFFFFF" />
+          <Text style={styles.callButtonText}>Call</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -159,6 +178,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#EF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   liveBadgeText: {
     color: '#EF4444',
@@ -173,8 +195,11 @@ const styles = StyleSheet.create({
   batteryPill: {
     backgroundColor: '#2A2D34',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   batteryPillWarning: {
     backgroundColor: 'rgba(239, 68, 68, 0.25)',
@@ -183,7 +208,7 @@ const styles = StyleSheet.create({
   },
   batteryText: {
     color: '#E5E7EB',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   telemetryRow: {
@@ -195,8 +220,11 @@ const styles = StyleSheet.create({
   statusPill: {
     backgroundColor: '#262930',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   statusPillText: {
     color: '#D1D5DB',
@@ -214,9 +242,11 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   chatButton: {
     backgroundColor: '#2A2D34',

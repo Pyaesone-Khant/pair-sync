@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export interface SafePlace {
   id: string;
@@ -160,7 +161,8 @@ export default function PlacesScreen() {
               </Text>
             </View>
             <TouchableOpacity style={styles.addBtn} onPress={openAddModal}>
-              <Text style={styles.addBtnText}>+ Add Place</Text>
+              <Ionicons name="add" size={16} color="#0B0F17" />
+              <Text style={styles.addBtnText}>Add Place</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -178,15 +180,19 @@ export default function PlacesScreen() {
                     styles.iconCircle,
                     item.partnerPresent ? styles.iconCircleActive : styles.iconCircleInactive,
                   ]}>
-                  <Text style={styles.iconEmoji}>
-                    {item.category === 'home'
-                      ? '🏠'
-                      : item.category === 'work'
-                      ? '🏢'
-                      : item.category === 'gym'
-                      ? '🏋️'
-                      : '⭐️'}
-                  </Text>
+                  <Ionicons
+                    name={
+                      item.category === 'home'
+                        ? 'home-outline'
+                        : item.category === 'work'
+                        ? 'briefcase-outline'
+                        : item.category === 'gym'
+                        ? 'barbell-outline'
+                        : 'location-outline'
+                    }
+                    size={22}
+                    color={item.partnerPresent ? '#10B981' : '#94A3B8'}
+                  />
                 </View>
               </View>
 
@@ -195,6 +201,7 @@ export default function PlacesScreen() {
                   <Text style={styles.placeName}>{item.name}</Text>
                   {item.partnerPresent && (
                     <View style={styles.presentBadge}>
+                      <Ionicons name="location" size={10} color="#10B981" />
                       <Text style={styles.presentBadgeText}>Here Now</Text>
                     </View>
                   )}
@@ -208,6 +215,11 @@ export default function PlacesScreen() {
                 <TouchableOpacity
                   style={styles.simulateBtn}
                   onPress={() => togglePresence(item.id)}>
+                  <Ionicons
+                    name={item.partnerPresent ? 'exit-outline' : 'enter-outline'}
+                    size={13}
+                    color="#38BDF8"
+                  />
                   <Text style={styles.simulateBtnText}>
                     {item.partnerPresent ? 'Exit' : 'Enter'}
                   </Text>
@@ -217,12 +229,14 @@ export default function PlacesScreen() {
                   <TouchableOpacity
                     style={styles.smallActionBtn}
                     onPress={() => openEditModal(item)}>
+                    <Ionicons name="pencil-sharp" size={12} color="#94A3B8" />
                     <Text style={styles.smallActionText}>Edit</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.smallActionBtn}
                     onPress={() => handleDeletePlace(item.id, item.name)}>
+                    <Ionicons name="trash-outline" size={12} color="#EF4444" />
                     <Text style={[styles.smallActionText, styles.deleteActionText]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
@@ -259,22 +273,30 @@ export default function PlacesScreen() {
               {/* Category Selector */}
               <Text style={styles.inputLabel}>Category Icon</Text>
               <View style={styles.categoryRow}>
-                {(['home', 'work', 'gym', 'other'] as const).map((cat) => (
+                {([
+                  { key: 'home', label: 'Home', icon: 'home-outline' },
+                  { key: 'work', label: 'Work', icon: 'briefcase-outline' },
+                  { key: 'gym', label: 'Gym', icon: 'barbell-outline' },
+                  { key: 'other', label: 'Other', icon: 'location-outline' },
+                ] as const).map((cat) => (
                   <TouchableOpacity
-                    key={cat}
+                    key={cat.key}
                     style={[
                       styles.categoryBtn,
-                      categoryInput === cat && styles.categoryBtnActive,
+                      categoryInput === cat.key && styles.categoryBtnActive,
                     ]}
-                    onPress={() => setCategoryInput(cat)}>
-                    <Text style={styles.categoryBtnText}>
-                      {cat === 'home'
-                        ? '🏠 Home'
-                        : cat === 'work'
-                        ? '🏢 Work'
-                        : cat === 'gym'
-                        ? '🏋️ Gym'
-                        : '⭐️ Other'}
+                    onPress={() => setCategoryInput(cat.key)}>
+                    <Ionicons
+                      name={cat.icon}
+                      size={14}
+                      color={categoryInput === cat.key ? '#38BDF8' : '#94A3B8'}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryBtnText,
+                        categoryInput === cat.key && styles.categoryBtnTextActive,
+                      ]}>
+                      {cat.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -308,6 +330,7 @@ export default function PlacesScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSavePlace}>
+                  <Ionicons name="checkmark" size={16} color="#0B0F17" />
                   <Text style={styles.saveBtnText}>Save Safe Place</Text>
                 </TouchableOpacity>
               </View>
@@ -350,6 +373,9 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     backgroundColor: '#38BDF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 12,
@@ -409,6 +435,9 @@ const styles = StyleSheet.create({
   },
   presentBadge: {
     backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -436,6 +465,9 @@ const styles = StyleSheet.create({
   },
   simulateBtn: {
     backgroundColor: '#1E293B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -452,6 +484,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   smallActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     paddingVertical: 4,
     paddingHorizontal: 4,
   },
@@ -510,6 +545,9 @@ const styles = StyleSheet.create({
   },
   categoryBtn: {
     backgroundColor: '#0B0F17',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
@@ -523,6 +561,10 @@ const styles = StyleSheet.create({
   categoryBtnText: {
     color: '#E2E8F0',
     fontSize: 13,
+  },
+  categoryBtnTextActive: {
+    color: '#38BDF8',
+    fontWeight: '600',
   },
   radiusRow: {
     flexDirection: 'row',
@@ -570,9 +612,12 @@ const styles = StyleSheet.create({
   saveBtn: {
     flex: 2,
     backgroundColor: '#38BDF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: 'center',
   },
   saveBtnText: {
     color: '#0B0F17',

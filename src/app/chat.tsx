@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface LocalChatMessage {
   id: string;
@@ -60,8 +61,9 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* E2EE Security Banner */}
         <View style={styles.securityBanner}>
+          <Ionicons name="shield-checkmark" size={13} color="#10B981" />
           <Text style={styles.securityBannerText}>
-            🔒 End-to-End Encrypted • Zero-Knowledge Private Chat
+            End-to-End Encrypted • Zero-Knowledge Private Chat
           </Text>
         </View>
 
@@ -86,7 +88,13 @@ export default function ChatScreen() {
                   <Text style={styles.messageText}>{item.text}</Text>
                   <View style={styles.messageFooter}>
                     <Text style={styles.timestampText}>{item.timestamp}</Text>
-                    {item.isEncrypted && <Text style={styles.lockIcon}>🔐</Text>}
+                    {item.isEncrypted && (
+                      <Ionicons
+                        name="lock-closed"
+                        size={10}
+                        color={isMe ? 'rgba(255, 255, 255, 0.7)' : '#64748B'}
+                      />
+                    )}
                   </View>
                 </View>
               </View>
@@ -109,8 +117,13 @@ export default function ChatScreen() {
               inputText.trim().length > 0 && styles.sendButtonActive,
             ]}
             onPress={handleSendMessage}
-            disabled={!inputText.trim()}>
-            <Text style={styles.sendButtonText}>Send</Text>
+            disabled={!inputText.trim()}
+            accessibilityLabel="Send encrypted message">
+            <Ionicons
+              name="arrow-up"
+              size={18}
+              color={inputText.trim().length > 0 ? '#0B0F17' : '#64748B'}
+            />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -129,11 +142,14 @@ const styles = StyleSheet.create({
   },
   securityBanner: {
     backgroundColor: '#151B26',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#232B3A',
-    alignItems: 'center',
   },
   securityBannerText: {
     color: '#10B981',
@@ -209,13 +225,18 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   sendButton: {
-    backgroundColor: '#334155',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    width: 40,
+    height: 40,
     borderRadius: 20,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   sendButtonActive: {
     backgroundColor: '#38BDF8',
+    borderColor: '#38BDF8',
   },
   sendButtonText: {
     color: '#FFFFFF',
