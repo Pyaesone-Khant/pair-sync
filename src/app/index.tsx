@@ -259,6 +259,13 @@ export default function RadarScreen() {
           accessibilityLabel="Center camera on my location">
           <Ionicons name="navigate" size={20} color="#38BDF8" />
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.circleBtn}
+          onPress={() => router.push('/places')}
+          accessibilityLabel="Manage Safe Places">
+          <Ionicons name="shield-checkmark-outline" size={20} color="#10B981" />
+        </TouchableOpacity>
       </View>
 
       {/* Bottom Floating Control Panel */}
