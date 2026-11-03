@@ -33,8 +33,10 @@ export default function AppTabs() {
 }
 
 export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { ref, ...pressableProps } = props as { ref?: unknown; [key: string]: unknown };
   return (
-    <Pressable {...props} style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}>
+    <Pressable {...pressableProps} style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}>
       <View style={[styles.tabButtonView, isFocused && styles.tabButtonViewSelected]}>
         <Text style={[styles.tabButtonText, isFocused && styles.tabButtonTextSelected]}>
           {children}
