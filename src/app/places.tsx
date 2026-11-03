@@ -9,8 +9,12 @@ import {
   Modal,
   TextInput,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import MapView, { Marker, Circle } from 'react-native-maps';
 
 export interface SafePlace {
   id: string;
@@ -62,12 +66,17 @@ export default function PlacesScreen() {
   const [nameInput, setNameInput] = useState('');
   const [categoryInput, setCategoryInput] = useState<'home' | 'work' | 'gym' | 'other'>('home');
   const [radiusInput, setRadiusInput] = useState(100);
+  const [targetCoord, setTargetCoord] = useState<{ latitude: number; longitude: number }>({
+    latitude: 37.7749,
+    longitude: -122.4194,
+  });
 
   const openAddModal = () => {
     setEditingPlaceId(null);
     setNameInput('');
     setCategoryInput('home');
     setRadiusInput(100);
+    setTargetCoord({ latitude: 37.7749, longitude: -122.4194 });
     setModalVisible(true);
   };
 
@@ -76,6 +85,7 @@ export default function PlacesScreen() {
     setNameInput(place.name);
     setCategoryInput(place.category);
     setRadiusInput(place.radiusMeters);
+    setTargetCoord({ latitude: place.latitude, longitude: place.longitude });
     setModalVisible(true);
   };
 
@@ -86,7 +96,6 @@ export default function PlacesScreen() {
     }
 
     if (editingPlaceId) {
-      // Edit existing
       setPlaces((prev) =>
         prev.map((p) =>
           p.id === editingPlaceId
@@ -95,19 +104,20 @@ export default function PlacesScreen() {
                 name: nameInput.trim(),
                 category: categoryInput,
                 radiusMeters: radiusInput,
+                latitude: targetCoord.latitude,
+                longitude: targetCoord.longitude,
               }
             : p
         )
       );
     } else {
-      // Add new
       const newPlace: SafePlace = {
         id: Date.now().toString(),
         name: nameInput.trim(),
         category: categoryInput,
         radiusMeters: radiusInput,
-        latitude: 37.775,
-        longitude: -122.418,
+        latitude: targetCoord.latitude,
+        longitude: targetCoord.longitude,
         partnerPresent: false,
         lastEvent: 'Added just now',
       };
@@ -120,7 +130,7 @@ export default function PlacesScreen() {
   const handleDeletePlace = (id: string, name: string) => {
     Alert.alert(
       'Delete Safe Place',
-      `Are you sure you want to remove "${name}"? Geofence alerts for this place will be unregistered.`,
+      `Are you sure you want to remove "${name}"? Hardware geofence boundary alerts for this perimeter will be unregistered.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -148,22 +158,46 @@ export default function PlacesScreen() {
     );
   };
 
+  const presentCount = places.filter((p) => p.partnerPresent).length;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
-            <View>
+            <View style={styles.titleContainer}>
               <Text style={styles.title}>Safe Places</Text>
-              <Text style={styles.subtitle}>
-                Hardware geofencing alerts • Zero cloud tracking
+              <Text style={styles.subtitle} numberOfLines={1}>
+                Private Geofences • Zero Cloud Tracking
               </Text>
             </View>
-            <TouchableOpacity style={styles.addBtn} onPress={openAddModal}>
-              <Ionicons name="add" size={16} color="#0B0F17" />
+
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={openAddModal}
+              accessibilityLabel="Add Safe Place">
+              <Ionicons name="add" size={18} color="#0B0F17" />
               <Text style={styles.addBtnText}>Add Place</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Status & Telemetry Banner */}
+        <View style={styles.statusBanner}>
+          <View style={styles.statusBannerLeft}>
+            <View style={styles.statusIndicatorDot} />
+            <Text style={styles.statusBannerTitle}>
+              {places.length} Monitored Zones
+            </Text>
+            <Text style={styles.statusBannerDivider}>•</Text>
+            <Text style={styles.statusBannerHighlight}>
+              {presentCount > 0 ? `${presentCount} Partner Inside` : 'All Vacant'}
+            </Text>
+          </View>
+          <View style={styles.engineBadge}>
+            <Ionicons name="hardware-chip-outline" size={12} color="#38BDF8" />
+            <Text style={styles.engineBadgeText}>Autonomous</Text>
           </View>
         </View>
 
@@ -172,72 +206,122 @@ export default function PlacesScreen() {
           data={places}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <View style={styles.placeCard}>
-              <View style={styles.placeIconCol}>
+              {/* Card Header */}
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderLeft}>
+                  <View
+                    style={[
+                      styles.iconCircle,
+                      item.partnerPresent ? styles.iconCircleActive : styles.iconCircleInactive,
+                    ]}>
+                    <Ionicons
+                      name={
+                        item.category === 'home'
+                          ? 'home'
+                          : item.category === 'work'
+                          ? 'briefcase'
+                          : item.category === 'gym'
+                          ? 'barbell'
+                          : 'location'
+                      }
+                      size={20}
+                      color={item.partnerPresent ? '#10B981' : '#38BDF8'}
+                    />
+                  </View>
+
+                  <View style={styles.nameAndCategoryCol}>
+                    <Text style={styles.placeName}>{item.name}</Text>
+                    <View style={styles.geofenceChipRow}>
+                      <Ionicons name="radio-outline" size={12} color="#38BDF8" />
+                      <Text style={styles.radiusChipText}>{item.radiusMeters}m perimeter</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Presence Status Badge */}
                 <View
                   style={[
-                    styles.iconCircle,
-                    item.partnerPresent ? styles.iconCircleActive : styles.iconCircleInactive,
+                    styles.presenceBadge,
+                    item.partnerPresent ? styles.presenceBadgeActive : styles.presenceBadgeInactive,
                   ]}>
                   <Ionicons
-                    name={
-                      item.category === 'home'
-                        ? 'home-outline'
-                        : item.category === 'work'
-                        ? 'briefcase-outline'
-                        : item.category === 'gym'
-                        ? 'barbell-outline'
-                        : 'location-outline'
-                    }
-                    size={22}
-                    color={item.partnerPresent ? '#10B981' : '#94A3B8'}
+                    name={item.partnerPresent ? 'radio' : 'radio-outline'}
+                    size={11}
+                    color={item.partnerPresent ? '#10B981' : '#64748B'}
                   />
+                  <Text
+                    style={[
+                      styles.presenceBadgeText,
+                      item.partnerPresent
+                        ? styles.presenceBadgeTextActive
+                        : styles.presenceBadgeTextInactive,
+                    ]}>
+                    {item.partnerPresent ? 'Partner Inside' : 'Outside'}
+                  </Text>
                 </View>
               </View>
 
-              <View style={styles.placeInfoCol}>
-                <View style={styles.placeTitleRow}>
-                  <Text style={styles.placeName}>{item.name}</Text>
-                  {item.partnerPresent && (
-                    <View style={styles.presentBadge}>
-                      <Ionicons name="location" size={10} color="#10B981" />
-                      <Text style={styles.presentBadgeText}>Here Now</Text>
-                    </View>
-                  )}
+              {/* Card Meta Row */}
+              <View style={styles.cardMetaRow}>
+                <View style={styles.eventInfoRow}>
+                  <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                  <Text style={styles.lastEventText}>{item.lastEvent}</Text>
                 </View>
-
-                <Text style={styles.radiusText}>Geofence radius: {item.radiusMeters}m</Text>
-                <Text style={styles.lastEventText}>{item.lastEvent}</Text>
+                <View style={styles.coordInfoRow}>
+                  <Ionicons name="compass-outline" size={12} color="#64748B" />
+                  <Text style={styles.coordText}>
+                    {item.latitude.toFixed(4)}°, {item.longitude.toFixed(4)}°
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.actionsCol}>
+              {/* Divider */}
+              <View style={styles.cardDivider} />
+
+              {/* Card Footer Actions */}
+              <View style={styles.cardFooter}>
+                {/* Simulation Toggle Pill */}
                 <TouchableOpacity
-                  style={styles.simulateBtn}
+                  style={[
+                    styles.presenceToggleBtn,
+                    item.partnerPresent
+                      ? styles.presenceToggleBtnActive
+                      : styles.presenceToggleBtnInactive,
+                  ]}
                   onPress={() => togglePresence(item.id)}>
                   <Ionicons
                     name={item.partnerPresent ? 'exit-outline' : 'enter-outline'}
-                    size={13}
-                    color="#38BDF8"
+                    size={15}
+                    color={item.partnerPresent ? '#F43F5E' : '#38BDF8'}
                   />
-                  <Text style={styles.simulateBtnText}>
-                    {item.partnerPresent ? 'Exit' : 'Enter'}
+                  <Text
+                    style={[
+                      styles.presenceToggleText,
+                      item.partnerPresent
+                        ? styles.presenceToggleTextActive
+                        : styles.presenceToggleTextInactive,
+                    ]}>
+                    {item.partnerPresent ? 'Simulate Departure' : 'Simulate Arrival'}
                   </Text>
                 </TouchableOpacity>
 
-                <View style={styles.editDeleteRow}>
+                {/* Quick Edit and Delete Icon Actions */}
+                <View style={styles.cardActionGroup}>
                   <TouchableOpacity
-                    style={styles.smallActionBtn}
-                    onPress={() => openEditModal(item)}>
-                    <Ionicons name="pencil-sharp" size={12} color="#94A3B8" />
-                    <Text style={styles.smallActionText}>Edit</Text>
+                    style={styles.actionIconBtn}
+                    onPress={() => openEditModal(item)}
+                    accessibilityLabel={`Edit ${item.name}`}>
+                    <Ionicons name="pencil-sharp" size={15} color="#94A3B8" />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.smallActionBtn}
-                    onPress={() => handleDeletePlace(item.id, item.name)}>
-                    <Ionicons name="trash-outline" size={12} color="#EF4444" />
-                    <Text style={[styles.smallActionText, styles.deleteActionText]}>Delete</Text>
+                    style={[styles.actionIconBtn, styles.deleteIconBtn]}
+                    onPress={() => handleDeletePlace(item.id, item.name)}
+                    accessibilityLabel={`Delete ${item.name}`}>
+                    <Ionicons name="trash-outline" size={15} color="#F43F5E" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -245,97 +329,151 @@ export default function PlacesScreen() {
           )}
         />
 
-        {/* Add/Edit Modal */}
+        {/* Add/Edit Modal with Interactive Geofence Map */}
         <Modal
           visible={modalVisible}
           animationType="slide"
           transparent
           onRequestClose={() => setModalVisible(false)}>
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>
-                {editingPlaceId ? 'Edit Safe Place' : 'New Safe Place'}
-              </Text>
-              <Text style={styles.modalSubtitle}>
-                Boundary notifications fire automatically when your partner arrives or leaves.
-              </Text>
-
-              {/* Name Input */}
-              <Text style={styles.inputLabel}>Place Name</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. Home, Office, Gym, Mom's House"
-                placeholderTextColor="#64748B"
-                value={nameInput}
-                onChangeText={setNameInput}
-              />
-
-              {/* Category Selector */}
-              <Text style={styles.inputLabel}>Category Icon</Text>
-              <View style={styles.categoryRow}>
-                {([
-                  { key: 'home', label: 'Home', icon: 'home-outline' },
-                  { key: 'work', label: 'Work', icon: 'briefcase-outline' },
-                  { key: 'gym', label: 'Gym', icon: 'barbell-outline' },
-                  { key: 'other', label: 'Other', icon: 'location-outline' },
-                ] as const).map((cat) => (
-                  <TouchableOpacity
-                    key={cat.key}
-                    style={[
-                      styles.categoryBtn,
-                      categoryInput === cat.key && styles.categoryBtnActive,
-                    ]}
-                    onPress={() => setCategoryInput(cat.key)}>
-                    <Ionicons
-                      name={cat.icon}
-                      size={14}
-                      color={categoryInput === cat.key ? '#38BDF8' : '#94A3B8'}
-                    />
-                    <Text
-                      style={[
-                        styles.categoryBtnText,
-                        categoryInput === cat.key && styles.categoryBtnTextActive,
-                      ]}>
-                      {cat.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Radius Presets */}
-              <Text style={styles.inputLabel}>Geofence Radius ({radiusInput}m)</Text>
-              <View style={styles.radiusRow}>
-                {[50, 100, 150, 250, 500].map((r) => (
-                  <TouchableOpacity
-                    key={r}
-                    style={[styles.radiusBtn, radiusInput === r && styles.radiusBtnActive]}
-                    onPress={() => setRadiusInput(r)}>
-                    <Text
-                      style={[
-                        styles.radiusBtnText,
-                        radiusInput === r && styles.radiusBtnTextActive,
-                      ]}>
-                      {r}m
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Modal Buttons */}
-              <View style={styles.modalButtonsRow}>
+              {/* Modal Top Bar */}
+              <View style={styles.modalHeaderRow}>
+                <View>
+                  <Text style={styles.modalTitle}>
+                    {editingPlaceId ? 'Edit Safe Place' : 'New Safe Place'}
+                  </Text>
+                  <Text style={styles.modalSubtitle}>
+                    Autonomous geofence evaluated on-device
+                  </Text>
+                </View>
                 <TouchableOpacity
-                  style={styles.cancelBtn}
+                  style={styles.modalCloseBtn}
                   onPress={() => setModalVisible(false)}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSavePlace}>
-                  <Ionicons name="checkmark" size={16} color="#0B0F17" />
-                  <Text style={styles.saveBtnText}>Save Safe Place</Text>
+                  <Ionicons name="close" size={20} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalScrollContent}>
+                {/* Live Geofence Map Preview */}
+                <View style={styles.modalMapWrapper}>
+                  <MapView
+                    style={styles.modalMap}
+                    userInterfaceStyle="dark"
+                    region={{
+                      latitude: targetCoord.latitude,
+                      longitude: targetCoord.longitude,
+                      latitudeDelta: 0.006,
+                      longitudeDelta: 0.006,
+                    }}
+                    scrollEnabled={false}
+                    zoomEnabled={false}>
+                    <Circle
+                      center={targetCoord}
+                      radius={radiusInput}
+                      fillColor="rgba(56, 189, 248, 0.25)"
+                      strokeColor="#38BDF8"
+                      strokeWidth={2}
+                    />
+                    <Marker coordinate={targetCoord} />
+                  </MapView>
+                  <View style={styles.mapRadiusBadge}>
+                    <Ionicons name="radio-outline" size={12} color="#38BDF8" />
+                    <Text style={styles.mapRadiusBadgeText}>{radiusInput}m Geofence Perimeter</Text>
+                  </View>
+                </View>
+
+                {/* Name Input */}
+                <Text style={styles.inputLabel}>Place Name</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="bookmark-outline" size={16} color="#64748B" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. Home, Office, Gym, Studio"
+                    placeholderTextColor="#64748B"
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                  />
+                  {nameInput.length > 0 && (
+                    <TouchableOpacity onPress={() => setNameInput('')}>
+                      <Ionicons name="close-circle" size={16} color="#64748B" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Category Selector */}
+                <Text style={styles.inputLabel}>Category Icon</Text>
+                <View style={styles.categoryRow}>
+                  {([
+                    { key: 'home', label: 'Home', icon: 'home-outline' },
+                    { key: 'work', label: 'Work', icon: 'briefcase-outline' },
+                    { key: 'gym', label: 'Gym', icon: 'barbell-outline' },
+                    { key: 'other', label: 'Other', icon: 'location-outline' },
+                  ] as const).map((cat) => (
+                    <TouchableOpacity
+                      key={cat.key}
+                      style={[
+                        styles.categoryBtn,
+                        categoryInput === cat.key && styles.categoryBtnActive,
+                      ]}
+                      onPress={() => setCategoryInput(cat.key)}>
+                      <Ionicons
+                        name={cat.icon}
+                        size={16}
+                        color={categoryInput === cat.key ? '#38BDF8' : '#94A3B8'}
+                      />
+                      <Text
+                        style={[
+                          styles.categoryBtnText,
+                          categoryInput === cat.key && styles.categoryBtnTextActive,
+                        ]}>
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Radius Presets */}
+                <Text style={styles.inputLabel}>
+                  Geofence Radius ({radiusInput}m)
+                </Text>
+                <View style={styles.radiusRow}>
+                  {[50, 100, 150, 250, 500].map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[styles.radiusBtn, radiusInput === r && styles.radiusBtnActive]}
+                      onPress={() => setRadiusInput(r)}>
+                      <Text
+                        style={[
+                          styles.radiusBtnText,
+                          radiusInput === r && styles.radiusBtnTextActive,
+                        ]}>
+                        {r}m
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Modal Buttons */}
+                <View style={styles.modalButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleSavePlace}>
+                    <Ionicons name="checkmark" size={16} color="#0B0F17" />
+                    <Text style={styles.saveBtnText}>Save Safe Place</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </SafeAreaView>
@@ -361,15 +499,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  titleContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
   title: {
     color: '#F8FAFC',
     fontSize: 22,
     fontWeight: '700',
+    letterSpacing: -0.5,
   },
   subtitle: {
     color: '#94A3B8',
-    fontSize: 13,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 3,
+    fontWeight: '400',
   },
   addBtn: {
     backgroundColor: '#38BDF8',
@@ -377,30 +521,96 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 12,
+    flexShrink: 0,
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
   },
   addBtnText: {
     color: '#0B0F17',
     fontWeight: '700',
     fontSize: 13,
   },
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#151B26',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+  },
+  statusBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+  },
+  statusBannerTitle: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  statusBannerDivider: {
+    color: '#475569',
+    fontSize: 12,
+  },
+  statusBannerHighlight: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  engineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  engineBadgeText: {
+    color: '#38BDF8',
+    fontSize: 10,
+    fontWeight: '600',
+  },
   listContent: {
     padding: 16,
-    gap: 12,
+    gap: 14,
   },
   placeCard: {
     backgroundColor: '#151B26',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#232B3A',
-    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
-  placeIconCol: {
-    justifyContent: 'center',
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
   },
   iconCircle: {
     width: 44,
@@ -410,92 +620,142 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconCircleActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1.5,
     borderColor: '#10B981',
   },
   iconCircleInactive: {
-    backgroundColor: '#1E293B',
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderWidth: 1,
+    borderColor: '#232B3A',
   },
-  iconEmoji: {
-    fontSize: 20,
-  },
-  placeInfoCol: {
+  nameAndCategoryCol: {
     flex: 1,
-  },
-  placeTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   placeName: {
     color: '#F8FAFC',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
+    letterSpacing: -0.3,
   },
-  presentBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+  geofenceChipRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    gap: 4,
+    marginTop: 2,
+  },
+  radiusChipText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  presenceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
+  },
+  presenceBadgeActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderColor: '#10B981',
   },
-  presentBadgeText: {
-    color: '#10B981',
+  presenceBadgeInactive: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+  },
+  presenceBadgeText: {
     fontSize: 11,
     fontWeight: '600',
   },
-  radiusText: {
-    color: '#64748B',
-    fontSize: 12,
-    marginTop: 2,
+  presenceBadgeTextActive: {
+    color: '#10B981',
+  },
+  presenceBadgeTextInactive: {
+    color: '#94A3B8',
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  eventInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   lastEventText: {
     color: '#94A3B8',
     fontSize: 12,
-    marginTop: 4,
   },
-  actionsCol: {
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  simulateBtn: {
-    backgroundColor: '#1E293B',
+  coordInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  coordText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    marginVertical: 12,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  presenceToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  presenceToggleBtnActive: {
+    backgroundColor: 'rgba(244, 63, 94, 0.12)',
+    borderColor: '#F43F5E',
+  },
+  presenceToggleBtnInactive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderColor: '#38BDF8',
+  },
+  presenceToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  presenceToggleTextActive: {
+    color: '#F43F5E',
+  },
+  presenceToggleTextInactive: {
+    color: '#38BDF8',
+  },
+  cardActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#334155',
   },
-  simulateBtnText: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  editDeleteRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  smallActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-  },
-  smallActionText: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
-  deleteActionText: {
-    color: '#EF4444',
+  deleteIconBtn: {
+    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+    borderColor: 'rgba(244, 63, 94, 0.3)',
   },
   modalOverlay: {
     flex: 1,
@@ -506,9 +766,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#151B26',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
     borderWidth: 1,
     borderColor: '#232B3A',
+    maxHeight: '90%',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   modalTitle: {
     color: '#F8FAFC',
@@ -517,39 +786,90 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     color: '#94A3B8',
-    fontSize: 13,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalScrollContent: {
+    paddingBottom: 10,
+  },
+  modalMapWrapper: {
+    height: 140,
+    borderRadius: 16,
+    overflow: 'hidden',
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    position: 'relative',
+  },
+  modalMap: {
+    ...StyleSheet.absoluteFill,
+  },
+  mapRadiusBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(11, 15, 23, 0.85)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+  },
+  mapRadiusBadgeText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '600',
   },
   inputLabel: {
     color: '#CBD5E1',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    marginTop: 12,
+    marginTop: 10,
     marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  modalInput: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#0B0F17',
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: '#F8FAFC',
-    fontSize: 15,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#334155',
   },
+  inputIcon: {
+    marginRight: 8,
+  },
+  modalInput: {
+    flex: 1,
+    paddingVertical: 12,
+    color: '#F8FAFC',
+    fontSize: 15,
+  },
   categoryRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
   },
   categoryBtn: {
+    flex: 1,
     backgroundColor: '#0B0F17',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#334155',
@@ -559,8 +879,9 @@ const styles = StyleSheet.create({
     borderColor: '#38BDF8',
   },
   categoryBtnText: {
-    color: '#E2E8F0',
-    fontSize: 13,
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '500',
   },
   categoryBtnTextActive: {
     color: '#38BDF8',
@@ -585,7 +906,7 @@ const styles = StyleSheet.create({
   },
   radiusBtnText: {
     color: '#94A3B8',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   radiusBtnTextActive: {
@@ -594,8 +915,8 @@ const styles = StyleSheet.create({
   modalButtonsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 24,
-    marginBottom: 16,
+    marginTop: 20,
+    marginBottom: 8,
   },
   cancelBtn: {
     flex: 1,
@@ -603,11 +924,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   cancelBtnText: {
     color: '#94A3B8',
     fontWeight: '600',
-    fontSize: 15,
+    fontSize: 14,
   },
   saveBtn: {
     flex: 2,
@@ -622,6 +945,6 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: '#0B0F17',
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 14,
   },
 });
