@@ -47,7 +47,7 @@ export default function PairingScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Pairing Ceremony</Text>
           <Text style={styles.subtitle}>
-            Out-of-band cryptographic handshake (ADR 0006). Exchanges hardware public keys directly.
+            Direct Device Pairing • Secure Cryptographic Handshake
           </Text>
         </View>
 

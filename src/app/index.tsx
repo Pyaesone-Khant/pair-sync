@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,19 +6,27 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
-  ScrollView,
+  Dimensions,
 } from 'react-native';
+import MapView, { Marker, Circle } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { useLocationStore } from '../presentation/stores/location-store';
 import { PartnerStatusCard } from '../presentation/components/PartnerStatusCard';
 import { LocationTrackingStateMachine, LocationStateMode } from '../domain/location/location-state-machine';
 
-/**
- * Radar & Ambient Presence Screen.
- * Strictly adheres to CONTEXT.md, ADR 0003, and frontend-design principles.
- */
+const { width, height } = Dimensions.get('window');
+
+interface DemoPlace {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+}
+
 export default function RadarScreen() {
   const router = useRouter();
+  const mapRef = useRef<MapView | null>(null);
   const [stateMachine] = useState(() => new LocationTrackingStateMachine());
   const [currentMode, setCurrentMode] = useState<LocationStateMode>(LocationStateMode.Stationary);
 
@@ -28,8 +36,25 @@ export default function RadarScreen() {
   const updatePeerTelemetry = useLocationStore((state) => state.updatePeerTelemetry);
   const setPeerViewingMe = useLocationStore((state) => state.setPeerViewingMe);
 
+  // Demo Places rendered as live geofence circles on the map
+  const [places] = useState<DemoPlace[]>([
+    {
+      id: 'home',
+      name: 'Home',
+      latitude: 37.7749,
+      longitude: -122.4194,
+      radiusMeters: 120,
+    },
+    {
+      id: 'office',
+      name: 'Office',
+      latitude: 37.7899,
+      longitude: -122.4014,
+      radiusMeters: 180,
+    },
+  ]);
+
   useEffect(() => {
-    // Seed initial demo coordinates if not set
     if (!myTelemetry.coordinate) {
       updateMyTelemetry({
         coordinate: { latitude: 37.7749, longitude: -122.4194 },
@@ -48,6 +73,46 @@ export default function RadarScreen() {
       });
     }
   }, [myTelemetry.coordinate, peerTelemetry.coordinate, updateMyTelemetry, updatePeerTelemetry]);
+
+  const fitBothInView = () => {
+    if (!myTelemetry.coordinate || !peerTelemetry.coordinate || !mapRef.current) return;
+
+    mapRef.current.fitToCoordinates(
+      [myTelemetry.coordinate, peerTelemetry.coordinate],
+      {
+        edgePadding: { top: 120, right: 60, bottom: 320, left: 60 },
+        animated: true,
+      }
+    );
+  };
+
+  const centerOnPartner = () => {
+    if (!peerTelemetry.coordinate || !mapRef.current) return;
+
+    mapRef.current.animateToRegion(
+      {
+        latitude: peerTelemetry.coordinate.latitude,
+        longitude: peerTelemetry.coordinate.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      800
+    );
+  };
+
+  const centerOnMe = () => {
+    if (!myTelemetry.coordinate || !mapRef.current) return;
+
+    mapRef.current.animateToRegion(
+      {
+        latitude: myTelemetry.coordinate.latitude,
+        longitude: myTelemetry.coordinate.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      800
+    );
+  };
 
   const handleToggleMotion = () => {
     const isCurrentlyMoving = currentMode === LocationStateMode.Transit;
@@ -71,11 +136,69 @@ export default function RadarScreen() {
     setPeerViewingMe(!isCurrentlyViewing);
   };
 
+  const myCoord = myTelemetry.coordinate ?? { latitude: 37.7749, longitude: -122.4194 };
+  const peerCoord = peerTelemetry.coordinate ?? { latitude: 37.7833, longitude: -122.4167 };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Top App Bar */}
+
+      {/* Real Native Interactive Map */}
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        userInterfaceStyle="dark"
+        initialRegion={{
+          latitude: (myCoord.latitude + peerCoord.latitude) / 2,
+          longitude: (myCoord.longitude + peerCoord.longitude) / 2,
+          latitudeDelta: 0.035,
+          longitudeDelta: 0.035,
+        }}>
+        {/* Safe Places Geofence Circles */}
+        {places.map((place) => (
+          <Circle
+            key={place.id}
+            center={{ latitude: place.latitude, longitude: place.longitude }}
+            radius={place.radiusMeters}
+            fillColor="rgba(56, 189, 248, 0.18)"
+            strokeColor="#38BDF8"
+            strokeWidth={1.5}
+          />
+        ))}
+
+        {/* User Marker ("You") */}
+        <Marker coordinate={myCoord} title="You" anchor={{ x: 0.5, y: 0.5 }}>
+          <View style={styles.userMarkerContainer}>
+            <View style={styles.userPulseRing} />
+            <View style={styles.userDot}>
+              <Text style={styles.markerText}>You</Text>
+            </View>
+          </View>
+        </Marker>
+
+        {/* Partner Marker ("Partner") */}
+        <Marker coordinate={peerCoord} title="Partner" anchor={{ x: 0.5, y: 0.8 }}>
+          <View style={styles.peerMarkerContainer}>
+            <View style={styles.peerCalloutBubble}>
+              <Text style={styles.peerCalloutText}>
+                {peerTelemetry.batteryPercent !== null && `🔋 ${peerTelemetry.batteryPercent}% • `}
+                {peerTelemetry.motionActivity === 'Driving'
+                  ? '🚗 Driving'
+                  : peerTelemetry.motionActivity === 'Walking'
+                  ? '🚶 Walking'
+                  : '🛋️ At Place'}
+              </Text>
+            </View>
+            <View style={styles.peerAvatarCircle}>
+              <Text style={styles.peerAvatarText}>P</Text>
+            </View>
+            <View style={styles.peerPinTip} />
+          </View>
+        </Marker>
+      </MapView>
+
+      {/* Floating Top Header */}
+      <SafeAreaView style={styles.topOverlayContainer}>
         <View style={styles.topHeader}>
           <View>
             <Text style={styles.brandTitle}>PairSync</Text>
@@ -87,36 +210,40 @@ export default function RadarScreen() {
             <Text style={styles.modePillValue}>{currentMode}</Text>
           </View>
         </View>
+      </SafeAreaView>
 
-        {/* Ambient Radar Canvas */}
-        <View style={styles.radarCanvas}>
-          <View style={styles.radarRingOuter} />
-          <View style={styles.radarRingMiddle} />
-          <View style={styles.radarRingInner} />
+      {/* Floating Camera Controls (Right Side) */}
+      <View style={styles.floatingControls}>
+        <TouchableOpacity style={styles.circleBtn} onPress={fitBothInView}>
+          <Text style={styles.circleBtnText}>🎯</Text>
+        </TouchableOpacity>
 
-          {/* User Node */}
-          <View style={styles.userNode}>
-            <Text style={styles.nodeLabel}>You</Text>
+        <TouchableOpacity style={styles.circleBtn} onPress={centerOnPartner}>
+          <Text style={styles.circleBtnText}>💖</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.circleBtn} onPress={centerOnMe}>
+          <Text style={styles.circleBtnText}>📍</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Bottom Floating Control Panel */}
+      <View style={styles.bottomOverlay}>
+        {/* Battery Engine Info Card */}
+        <View style={styles.batteryEngineCard}>
+          <View style={styles.engineTextRow}>
+            <Text style={styles.engineTitle}>Adaptive Battery Engine</Text>
+            <Text style={styles.engineStatus}>
+              {stateMachine.isHighAccuracyGpsActive()
+                ? `High Accuracy (${stateMachine.getUpdateIntervalSeconds()}s)`
+                : 'Power Saving (300s)'}
+            </Text>
           </View>
-
-          {/* Partner Node */}
-          <View style={styles.peerNode}>
-            <Text style={styles.nodeLabel}>Partner</Text>
-          </View>
-        </View>
-
-        {/* Interactive Mode Simulator / Controls */}
-        <View style={styles.simulatorCard}>
-          <Text style={styles.simulatorTitle}>Adaptive Battery Engine (ADR 0003)</Text>
-          <Text style={styles.simulatorSubtitle}>
-            Updates: Every {stateMachine.getUpdateIntervalSeconds()}s • GPS:{' '}
-            {stateMachine.isHighAccuracyGpsActive() ? 'High Precision' : 'Dormant (Power Saving)'}
-          </Text>
 
           <View style={styles.controlsRow}>
             <TouchableOpacity style={styles.controlBtn} onPress={handleToggleMotion}>
               <Text style={styles.controlBtnText}>
-                {currentMode === LocationStateMode.Transit ? 'Stop Moving' : 'Start Walking'}
+                {currentMode === LocationStateMode.Transit ? 'Stop Walking' : 'Simulate Walking'}
               </Text>
             </TouchableOpacity>
 
@@ -129,7 +256,7 @@ export default function RadarScreen() {
               onPress={handleTogglePeerGaze}>
               <Text style={styles.controlBtnText}>
                 {stateMachine.getCurrentMode() === LocationStateMode.LiveViewing
-                  ? 'Close Map Gaze'
+                  ? 'Close Live Gaze'
                   : 'Simulate Live Gaze'}
               </Text>
             </TouchableOpacity>
@@ -142,26 +269,39 @@ export default function RadarScreen() {
           onInitiateCall={() => alert('Initiating native WebRTC CallSession with CallKit...')}
           onOpenChat={() => router.push('/chat')}
         />
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: '#0B0F17',
   },
-  scrollContent: {
-    paddingBottom: 100,
+  map: {
+    width,
+    height,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  topOverlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    backgroundColor: 'rgba(11, 15, 23, 0.75)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   brandTitle: {
     color: '#F8FAFC',
@@ -195,97 +335,60 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  radarCanvas: {
-    height: 280,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    backgroundColor: '#111827',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  radarRingOuter: {
+  floatingControls: {
     position: 'absolute',
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.1)',
+    right: 16,
+    top: 130,
+    gap: 10,
   },
-  radarRingMiddle: {
-    position: 'absolute',
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.18)',
-  },
-  radarRingInner: {
-    position: 'absolute',
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-  },
-  userNode: {
-    position: 'absolute',
-    bottom: 50,
-    left: 80,
+  circleBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#38BDF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#38BDF8',
-    shadowOpacity: 0.6,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  peerNode: {
-    position: 'absolute',
-    top: 50,
-    right: 80,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F43F5E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#F43F5E',
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  nodeLabel: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  simulatorCard: {
     backgroundColor: '#151B26',
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  circleBtnText: {
+    fontSize: 18,
+  },
+  bottomOverlay: {
+    position: 'absolute',
+    bottom: 70,
+    left: 0,
+    right: 0,
+    paddingBottom: 10,
+  },
+  batteryEngineCard: {
+    backgroundColor: 'rgba(21, 27, 38, 0.92)',
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     marginHorizontal: 16,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#232B3A',
   },
-  simulatorTitle: {
+  engineTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  engineTitle: {
     color: '#F1F5F9',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
-  simulatorSubtitle: {
-    color: '#94A3B8',
+  engineStatus: {
+    color: '#38BDF8',
     fontSize: 12,
-    marginTop: 4,
-    marginBottom: 12,
+    fontWeight: '500',
   },
   controlsRow: {
     flexDirection: 'row',
@@ -294,8 +397,8 @@ const styles = StyleSheet.create({
   controlBtn: {
     flex: 1,
     backgroundColor: '#1E293B',
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#334155',
@@ -306,7 +409,80 @@ const styles = StyleSheet.create({
   },
   controlBtnText: {
     color: '#F8FAFC',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
+  },
+  userMarkerContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userPulseRing: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  userDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#38BDF8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  markerText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  peerMarkerContainer: {
+    alignItems: 'center',
+  },
+  peerCalloutBubble: {
+    backgroundColor: 'rgba(21, 27, 38, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F43F5E',
+    marginBottom: 4,
+  },
+  peerCalloutText: {
+    color: '#F8FAFC',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  peerAvatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F43F5E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#F43F5E',
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+  },
+  peerAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  peerPinTip: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#F43F5E',
   },
 });

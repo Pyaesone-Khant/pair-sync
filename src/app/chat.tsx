@@ -32,7 +32,7 @@ export default function ChatScreen() {
     {
       id: '2',
       sender: 'me',
-      text: 'Great, I see on the radar you are ~1.2 km away. See you soon!',
+      text: 'Great, I see on the map you are ~1.2 km away. See you soon!',
       timestamp: '14:22',
       isEncrypted: true,
     },
@@ -61,7 +61,7 @@ export default function ChatScreen() {
         {/* E2EE Security Banner */}
         <View style={styles.securityBanner}>
           <Text style={styles.securityBannerText}>
-            🔒 End-to-End Encrypted • Local-First SQLite (ADR 0004)
+            🔒 End-to-End Encrypted • Zero-Knowledge Private Chat
           </Text>
         </View>
 
