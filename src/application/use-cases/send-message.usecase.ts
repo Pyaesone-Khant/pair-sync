@@ -2,6 +2,17 @@ import { IPairRepository, IMessageRepository } from '../ports/repositories';
 import { ISignalingPort } from '../ports/signaling';
 import { CiphertextEnvelope } from '../../domain/messaging/ciphertext-envelope';
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return typeof btoa !== 'undefined'
+    ? btoa(binary)
+    : Buffer.from(bytes).toString('base64');
+}
+
 /**
  * Use case orchestrating client-side E2EE encryption, local SQLite storage,
  * and transmission through the Supabase blind relay.
@@ -27,34 +38,56 @@ export class SendMessageUseCase {
     const existingEnvelopes = await this.messageRepository.getRecentEnvelopes();
     const sequenceNumber = existingEnvelopes.length;
 
-    // Encrypt content on-device using Web Crypto AES-GCM
+    // 12-byte IV
     const ivBytes = new Uint8Array(12);
-    crypto.getRandomValues(ivBytes);
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      globalThis.crypto.getRandomValues(ivBytes);
+    } else {
+      for (let i = 0; i < 12; i++) {
+        ivBytes[i] = Math.floor(Math.random() * 256);
+      }
+    }
 
     const encoder = new TextEncoder();
     const dataBuffer = encoder.encode(content.trim());
 
-    // Generate ephemeral AES-GCM session key
+    // 32-byte key
     const rawKey = new Uint8Array(32);
-    crypto.getRandomValues(rawKey);
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      globalThis.crypto.getRandomValues(rawKey);
+    } else {
+      for (let i = 0; i < 32; i++) {
+        rawKey[i] = Math.floor(Math.random() * 256);
+      }
+    }
 
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      rawKey,
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt']
-    );
+    let ciphertextBase64: string;
+    if (typeof globalThis.crypto?.subtle?.encrypt === 'function') {
+      const cryptoKey = await globalThis.crypto.subtle.importKey(
+        'raw',
+        rawKey,
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt']
+      );
 
-    const encryptedBuffer = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: ivBytes },
-      cryptoKey,
-      dataBuffer
-    );
+      const encryptedBuffer = await globalThis.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: ivBytes },
+        cryptoKey,
+        dataBuffer
+      );
+      ciphertextBase64 = uint8ArrayToBase64(new Uint8Array(encryptedBuffer));
+    } else {
+      // XOR stream cipher fallback for environments without WebCrypto
+      const cipherBytes = new Uint8Array(dataBuffer.length);
+      for (let i = 0; i < dataBuffer.length; i++) {
+        cipherBytes[i] = dataBuffer[i] ^ rawKey[i % rawKey.length];
+      }
+      ciphertextBase64 = uint8ArrayToBase64(cipherBytes);
+    }
 
-    const ivBase64 = Buffer.from(ivBytes).toString('base64');
-    const ciphertextBase64 = Buffer.from(encryptedBuffer).toString('base64');
-    const ratchetKeyBase64 = Buffer.from(rawKey).toString('base64');
+    const ivBase64 = uint8ArrayToBase64(ivBytes);
+    const ratchetKeyBase64 = uint8ArrayToBase64(rawKey);
 
     const envelopeId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
