@@ -128,9 +128,9 @@ const styles = StyleSheet.create({
   cardContainer: {
     backgroundColor: '#1E2024',
     borderRadius: 20,
-    padding: 18,
+    padding: 16,
     marginHorizontal: 16,
-    marginVertical: 10,
+    marginVertical: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,

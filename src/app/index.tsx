@@ -416,10 +416,10 @@ const styles = StyleSheet.create({
   },
   bottomOverlay: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 84,
     left: 0,
     right: 0,
-    paddingBottom: 10,
+    paddingBottom: 6,
   },
   batteryEngineCard: {
     backgroundColor: 'rgba(21, 27, 38, 0.92)',
