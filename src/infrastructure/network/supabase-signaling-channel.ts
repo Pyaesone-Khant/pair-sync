@@ -105,7 +105,9 @@ export class SupabaseSignalingChannel implements ISignalingPort {
         this.callSignalListeners.forEach((listener) => listener(payload));
       });
 
-    channel.subscribe();
+    channel.subscribe((status) => {
+      console.log(`[SupabaseSignalingChannel] Realtime topic [${topic}] status: ${status}`);
+    });
     this.currentChannel = channel;
   }
 
