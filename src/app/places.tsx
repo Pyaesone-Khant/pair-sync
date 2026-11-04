@@ -294,9 +294,9 @@ export default function PlacesScreen() {
             <TouchableOpacity
               style={styles.addBtn}
               onPress={openAddModal}
+              activeOpacity={0.8}
               accessibilityLabel="Add Safe Place">
-              <Ionicons name="add" size={18} color="#0B0F17" />
-              <Text style={styles.addBtnText}>Add Place</Text>
+              <Ionicons name="pin" size={20} color="#0B0F17" />
             </TouchableOpacity>
           </View>
         </View>
@@ -652,22 +652,16 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     backgroundColor: '#38BDF8',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    width: 40,
+    height: 40,
     borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     flexShrink: 0,
     shadowColor: '#38BDF8',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
-  },
-  addBtnText: {
-    color: '#0B0F17',
-    fontWeight: '700',
-    fontSize: 13,
   },
   statusBanner: {
     flexDirection: 'row',
