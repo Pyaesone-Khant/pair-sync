@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
 import { getSupabaseAuthService } from '../../infrastructure/auth/supabase-auth-service';
 import { DesignTokens } from '../../constants/theme';
-import { Account } from '../../domain/auth/account';
 
 /**
  * High-aesthetic Google Sign-In & Onboarding Screen.
@@ -22,7 +21,7 @@ import { Account } from '../../domain/auth/account';
  * Adheres to ADR 0006 (Hybrid Identity), frontend-design, and Vercel design principles.
  */
 export const LoginScreen: React.FC = () => {
-  const { isLoading, error, signInWithGoogle, setAccount } = useAuthStore();
+  const { isLoading, error, signInWithGoogle } = useAuthStore();
   const authService = getSupabaseAuthService();
 
   const handleGoogleSignIn = async () => {
@@ -38,17 +37,6 @@ export const LoginScreen: React.FC = () => {
       const msg = err instanceof Error ? err.message : 'Sign in failed';
       Alert.alert('Sign-In Error', msg);
     }
-  };
-
-  const handleDemoSignIn = () => {
-    const demoAccount = new Account({
-      id: `google-user-${Date.now()}`,
-      email: 'alex.morgan@gmail.com',
-      fullName: 'Alex Morgan',
-      avatarUrl: null,
-      createdAt: Date.now(),
-    });
-    setAccount(demoAccount);
   };
 
   return (
@@ -72,21 +60,21 @@ export const LoginScreen: React.FC = () => {
         <View style={styles.featureCardsContainer}>
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="navigate" size={19} color={DesignTokens.colors.accentEmerald} />
+              <Ionicons name="navigate" size={20} color={DesignTokens.colors.accentEmerald} />
             </View>
             <Text style={styles.featureTitle}>Live Radar & Presence</Text>
           </View>
 
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="shield-checkmark" size={19} color={DesignTokens.colors.accentCyan} />
+              <Ionicons name="shield-checkmark" size={20} color={DesignTokens.colors.accentCyan} />
             </View>
             <Text style={styles.featureTitle}>Safe Places Geofencing</Text>
           </View>
 
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="chatbubbles" size={19} color="#F43F5E" />
+              <Ionicons name="chatbubbles" size={20} color="#F43F5E" />
             </View>
             <Text style={styles.featureTitle}>1-to-1 Calls & Chat</Text>
           </View>
@@ -116,17 +104,6 @@ export const LoginScreen: React.FC = () => {
                 <Text style={styles.googleBtnText}>Continue with Google</Text>
               </>
             )}
-          </TouchableOpacity>
-
-          {/* Instant Demo Sign-In (Simulator & Rapid Verification) */}
-          <TouchableOpacity
-            style={styles.demoBtn}
-            onPress={handleDemoSignIn}
-            disabled={isLoading}
-            activeOpacity={0.7}
-            accessibilityLabel="Instant Demo Account">
-            <Ionicons name="flash-outline" size={15} color={DesignTokens.colors.accentCyan} />
-            <Text style={styles.demoBtnText}>Continue as Demo Account (Alex Morgan)</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -247,22 +224,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0B0F17',
     letterSpacing: -0.2,
-  },
-  demoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(56, 189, 248, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-    borderRadius: 14,
-    paddingVertical: 12,
-  },
-  demoBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: DesignTokens.colors.accentCyan,
   },
   disclaimerText: {
     fontSize: 11,

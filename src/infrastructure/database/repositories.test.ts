@@ -108,6 +108,25 @@ describe('Local-First SQLite Repositories (ADR 0004 & ADR 0009)', () => {
       expect(all).toHaveLength(2);
       expect(await pairRepo.getPairCount()).toBe(2);
     });
+
+    it('deletes a pair record and decrements total pair count', async () => {
+      const pair = new Pair({
+        id: 'pair-to-delete',
+        localDeviceId: 'dev-alice',
+        peerDeviceId: 'dev-bob',
+        peerPublicKey: 'bob-key-pub',
+      });
+      pair.activate();
+      await pairRepo.savePair(pair);
+
+      expect(await pairRepo.getPairCount()).toBe(1);
+      expect(await pairRepo.getActivePair()).not.toBeNull();
+
+      await pairRepo.deletePair('pair-to-delete');
+
+      expect(await pairRepo.getPairCount()).toBe(0);
+      expect(await pairRepo.getActivePair()).toBeNull();
+    });
   });
 
   describe('SqliteMessageRepository', () => {

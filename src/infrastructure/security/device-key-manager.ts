@@ -272,3 +272,34 @@ export class DeviceKeyManager {
     }
   }
 }
+
+let defaultKeyManager: DeviceKeyManager | null = null;
+
+export function getDeviceKeyManager(): DeviceKeyManager {
+  if (!defaultKeyManager) {
+    let keyStore: IKeyStorePort;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const SecureStore = require('expo-secure-store');
+      keyStore = new ExpoSecureKeyStore(SecureStore);
+    } catch {
+      keyStore = new InMemoryKeyStore();
+    }
+    defaultKeyManager = new DeviceKeyManager(keyStore);
+  }
+  return defaultKeyManager;
+}
+
+export async function getOrCreateLocalDeviceId(): Promise<string> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const SecureStore = require('expo-secure-store');
+    const existing = await SecureStore.getItemAsync('pair_sync_local_device_id');
+    if (existing) return existing;
+    const newId = `dev-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
+    await SecureStore.setItemAsync('pair_sync_local_device_id', newId);
+    return newId;
+  } catch {
+    return 'device-local-user';
+  }
+}

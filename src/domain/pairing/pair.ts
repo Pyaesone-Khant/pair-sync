@@ -54,4 +54,11 @@ export class Pair {
   public revoke(): void {
     this._status = PairStatus.Revoked;
   }
+
+  /**
+   * Computes a deterministic broadcast room ID shared between both devices.
+   */
+  public getPairRoomId(): string {
+    return [this.localDeviceId, this.peerDeviceId].sort().join('_');
+  }
 }

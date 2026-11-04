@@ -150,6 +150,10 @@ export class SqlitePairRepository implements IPairRepository {
   public async updatePairStatus(id: string, status: PairStatus): Promise<void> {
     this.db.run('UPDATE pairs SET status = ? WHERE id = ?', [status, id]);
   }
+
+  public async deletePair(id: string): Promise<void> {
+    this.db.run('DELETE FROM pairs WHERE id = ?', [id]);
+  }
 }
 
 /**

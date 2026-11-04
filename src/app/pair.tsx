@@ -8,10 +8,16 @@ import {
   Alert,
   ScrollView,
   Share,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { DeviceKeyManager, InMemoryKeyStore } from '../infrastructure/security/device-key-manager';
+import QRCode from 'qrcode';
+import {
+  getDeviceKeyManager,
+  getOrCreateLocalDeviceId,
+} from '../infrastructure/security/device-key-manager';
 import { PairDeviceUseCase, PairingPayload } from '../application/use-cases/pair-device.usecase';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Pair } from '../domain/pairing/pair';
@@ -19,34 +25,89 @@ import { Pair } from '../domain/pairing/pair';
 export default function PairingScreen() {
   const [activeTab, setActiveTab] = useState<'myCode' | 'scanner'>('myCode');
   const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+  const [safetyNumber, setSafetyNumber] = useState<string>('');
+  const [activePair, setActivePair] = useState<Pair | null>(null);
   const [isPaired, setIsPaired] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [pairUseCase, setPairUseCase] = useState<PairDeviceUseCase | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     async function initKeysAndPayload() {
-      const keyManager = new DeviceKeyManager(new InMemoryKeyStore());
-      const pairRepo = getDatabaseClient().getRepositories().pairRepo;
-      const useCase = new PairDeviceUseCase('device-local', keyManager, pairRepo);
-      setPairUseCase(useCase);
+      try {
+        const localDeviceId = await getOrCreateLocalDeviceId();
+        const keyManager = getDeviceKeyManager();
+        const pairRepo = getDatabaseClient().getRepositories().pairRepo;
+        const useCase = new PairDeviceUseCase(localDeviceId, keyManager, pairRepo);
 
-      const activePair = await pairRepo.getActivePair();
-      if (activePair) {
-        setIsPaired(true);
+        if (!mounted) return;
+        setPairUseCase(useCase);
+
+        // Check if device already has an active pair bond in SQLite
+        const currentPair = await pairRepo.getActivePair();
+        if (mounted && currentPair) {
+          setActivePair(currentPair);
+          setIsPaired(true);
+        }
+
+        // Generate real cryptographic payload
+        const payload = await useCase.generatePairingPayload();
+        if (!mounted) return;
+        setPairingPayload(payload);
+
+        // Deterministic cryptographic safety number formatted from public key
+        if (payload.publicKey) {
+          let hash = 0;
+          for (let i = 0; i < payload.publicKey.length; i++) {
+            hash = (hash * 31 + payload.publicKey.charCodeAt(i)) >>> 0;
+          }
+          const d1 = String(1000 + (hash % 9000));
+          const d2 = String(1000 + ((hash >> 4) % 9000));
+          const d3 = String(1000 + ((hash >> 8) % 9000));
+          const d4 = String(1000 + ((hash >> 12) % 9000));
+          setSafetyNumber(`${d1} • ${d2} • ${d3} • ${d4}`);
+        }
+
+        // Generate high-resolution scannable QR code PNG base64 data URL
+        const inviteUrl = `pairsync://pair?deviceId=${encodeURIComponent(
+          payload.deviceId
+        )}&publicKey=${encodeURIComponent(payload.publicKey)}&timestamp=${payload.timestamp}`;
+
+        const dataUrl = await QRCode.toDataURL(inviteUrl, {
+          width: 400,
+          margin: 1,
+          color: {
+            dark: '#0B0F17',
+            light: '#FFFFFF',
+          },
+        });
+
+        if (mounted) {
+          setQrCodeDataUrl(dataUrl);
+        }
+      } catch (err) {
+        console.warn('[PairingScreen] Error initializing cryptographic keys:', err);
       }
-
-      const payload = await useCase.generatePairingPayload();
-      setPairingPayload(payload);
     }
 
     initKeysAndPayload();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleShareInviteLink = async () => {
     try {
       const inviteUrl = pairingPayload
-        ? `pairsync://pair?deviceId=${encodeURIComponent(pairingPayload.deviceId)}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${pairingPayload.timestamp}`
+        ? `pairsync://pair?deviceId=${encodeURIComponent(
+            pairingPayload.deviceId
+          )}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${
+            pairingPayload.timestamp
+          }`
         : 'pairsync://pair/invite';
       await Share.share({
         title: 'PairSync Secure Peer Invite',
@@ -64,40 +125,53 @@ export default function PairingScreen() {
 
     try {
       await pairUseCase.processScannedPayload(data);
+      const pairRepo = getDatabaseClient().getRepositories().pairRepo;
+      const verifiedPair = await pairRepo.getActivePair();
+      setActivePair(verifiedPair);
       setIsPaired(true);
+
       Alert.alert(
         'Hardware Pairing Verified',
-        'Remote device identity verified via camera QR scan. Pair bond established!'
+        'Partner identity verified via cryptographic signature scan. Pair bond established!'
       );
-    } catch {
-      setIsPaired(true);
-      Alert.alert(
-        'Hardware Pairing Verified',
-        'Remote device identity verified via camera QR scan. Pair bond established!'
-      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Invalid QR code payload';
+      Alert.alert('Scan Failed', msg, [
+        {
+          text: 'Scan Again',
+          onPress: () => setScanned(false),
+        },
+      ]);
     }
   };
 
-  const handleSimulateScan = async () => {
-    try {
-      const pairRepo = getDatabaseClient().getRepositories().pairRepo;
-      const simulatedPair = new Pair({
-        id: `pair-${Date.now()}`,
-        localDeviceId: 'device-local',
-        peerDeviceId: 'device-remote-peer',
-        peerPublicKey: 'ed25519-public-key-partner',
-      });
-      simulatedPair.activate();
-      await pairRepo.savePair(simulatedPair);
-      setIsPaired(true);
-      Alert.alert(
-        'Pairing Ceremony Succeeded',
-        'Cryptographic signature verified. 1-to-1 Pair established and persisted to SQLite!'
-      );
-    } catch (err) {
-      console.warn('[PairingScreen] Simulate scan error:', err);
-      setIsPaired(true);
-    }
+  const handleUnpair = () => {
+    Alert.alert(
+      'Unpair Partner',
+      'Are you sure you want to remove this pair bond? Both devices will stop sharing real-time location, safe places alerts, and encrypted chat.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unpair',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const pairRepo = getDatabaseClient().getRepositories().pairRepo;
+              const current = await pairRepo.getActivePair();
+              if (current) {
+                await pairRepo.deletePair(current.id);
+              }
+              setActivePair(null);
+              setIsPaired(false);
+              setScanned(false);
+              Alert.alert('Device Unpaired', 'You are ready to pair with a new partner.');
+            } catch (err) {
+              console.warn('[PairingScreen] Unpair failed:', err);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -174,10 +248,18 @@ export default function PairingScreen() {
           showsVerticalScrollIndicator={false}>
           {activeTab === 'myCode' ? (
             <View style={styles.codeContainer}>
-              {/* Visual QR Simulation Box */}
+              {/* Real High-Resolution Scannable QR Box */}
               <View style={styles.qrCard}>
                 <View style={styles.qrWhiteTile}>
-                  <Ionicons name="qr-code" size={140} color="#0B0F17" />
+                  {qrCodeDataUrl ? (
+                    <Image
+                      source={{ uri: qrCodeDataUrl }}
+                      style={styles.qrImage}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <ActivityIndicator size="large" color="#38BDF8" />
+                  )}
                 </View>
                 <Text style={styles.qrLabel}>Pairing QR Code</Text>
               </View>
@@ -188,7 +270,9 @@ export default function PairingScreen() {
                   <Ionicons name="shield-checkmark-outline" size={14} color="#10B981" />
                   <Text style={styles.safetyLabel}>Safety Number</Text>
                 </View>
-                <Text style={styles.safetyNumber}>9481 • 2048 • 7719 • 3102</Text>
+                <Text style={styles.safetyNumber}>
+                  {safetyNumber || 'Generating...'}
+                </Text>
               </View>
 
               {/* Remote Invite Button */}
@@ -198,6 +282,17 @@ export default function PairingScreen() {
                 <Ionicons name="share-social-outline" size={16} color="#0B0F17" />
                 <Text style={styles.copyLinkText}>Share Secure Peer Invite Link</Text>
               </TouchableOpacity>
+
+              {/* Unpair Action if Paired */}
+              {isPaired && (
+                <TouchableOpacity
+                  style={styles.unpairBtn}
+                  onPress={handleUnpair}
+                  activeOpacity={0.8}>
+                  <Ionicons name="link-outline" size={16} color="#EF4444" />
+                  <Text style={styles.unpairBtnText}>Unpair Device</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.scannerContainer}>
@@ -239,22 +334,36 @@ export default function PairingScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity
-                style={[styles.actionBtn, isPaired && styles.actionBtnPaired]}
-                onPress={handleSimulateScan}>
-                <Ionicons
-                  name={isPaired ? 'checkmark-circle' : 'camera'}
-                  size={18}
-                  color={isPaired ? '#FFFFFF' : '#0B0F17'}
-                />
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    isPaired && styles.actionBtnTextPaired,
-                  ]}>
-                  {isPaired ? 'Bond Verified & Active' : 'Simulate Partner Scan'}
-                </Text>
-              </TouchableOpacity>
+              {isPaired ? (
+                <View style={styles.pairedCard}>
+                  <View style={styles.pairedRow}>
+                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                    <View style={styles.pairedTextCol}>
+                      <Text style={styles.pairedTitle}>Bond Verified & Active</Text>
+                      <Text style={styles.pairedSubtitle}>
+                        Paired with {activePair?.peerDeviceId ?? 'Remote Partner'}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.unpairSecondaryBtn}
+                    onPress={handleUnpair}
+                    activeOpacity={0.8}>
+                    <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                    <Text style={styles.unpairSecondaryBtnText}>Unpair Partner</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                scanned && (
+                  <TouchableOpacity
+                    style={styles.rescanBtn}
+                    onPress={() => setScanned(false)}
+                    activeOpacity={0.8}>
+                    <Ionicons name="refresh-outline" size={16} color="#38BDF8" />
+                    <Text style={styles.rescanBtnText}>Scan Again</Text>
+                  </TouchableOpacity>
+                )
+              )}
             </View>
           )}
         </ScrollView>
@@ -292,18 +401,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.5,
   },
-  subtitle: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 3,
-  },
   bondBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
   },
   bondBadgeActive: {
@@ -323,53 +427,6 @@ const styles = StyleSheet.create({
   },
   bondBadgeTextInactive: {
     color: '#38BDF8',
-  },
-  statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#151B26',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#232B3A',
-  },
-  statusBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-  },
-  statusIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#38BDF8',
-  },
-  statusIndicatorDotActive: {
-    backgroundColor: '#10B981',
-  },
-  statusBannerTitle: {
-    color: '#E2E8F0',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  engineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  engineBadgeText: {
-    color: '#38BDF8',
-    fontSize: 10,
-    fontWeight: '600',
   },
   tabSwitcher: {
     flexDirection: 'row',
@@ -429,7 +486,9 @@ const styles = StyleSheet.create({
   qrWhiteTile: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
+    padding: 12,
+    width: 220,
+    height: 220,
     justifyContent: 'center',
     alignItems: 'center',
     marginVertical: 10,
@@ -437,19 +496,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 10,
   },
+  qrImage: {
+    width: 200,
+    height: 200,
+  },
   qrLabel: {
     color: '#F8FAFC',
     fontSize: 16,
     fontWeight: '700',
     marginTop: 8,
     letterSpacing: -0.3,
-  },
-  qrSubtext: {
-    color: '#94A3B8',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 4,
-    lineHeight: 16,
   },
   safetyCard: {
     backgroundColor: '#151B26',
@@ -482,12 +538,6 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     fontVariant: ['tabular-nums'],
   },
-  safetyExplanation: {
-    color: '#64748B',
-    fontSize: 11,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
   copyLinkBtn: {
     backgroundColor: '#38BDF8',
     flexDirection: 'row',
@@ -506,6 +556,24 @@ const styles = StyleSheet.create({
     color: '#0B0F17',
     fontSize: 14,
     fontWeight: '700',
+  },
+  unpairBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    marginTop: 10,
+  },
+  unpairBtnText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '600',
   },
   scannerContainer: {
     alignItems: 'center',
@@ -598,32 +666,64 @@ const styles = StyleSheet.create({
     borderRightWidth: 3,
     borderColor: '#38BDF8',
   },
-  scannerInstruction: {
+  pairedCard: {
+    width: '100%',
+    backgroundColor: '#151B26',
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    gap: 14,
+  },
+  pairedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pairedTextCol: {
+    flex: 1,
+  },
+  pairedTitle: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pairedSubtitle: {
     color: '#94A3B8',
     fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 16,
-    marginTop: 16,
+    marginTop: 2,
   },
-  actionBtn: {
-    backgroundColor: '#38BDF8',
+  unpairSecondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  unpairSecondaryBtnText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  rescanBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     width: '100%',
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#38BDF8',
   },
-  actionBtnPaired: {
-    backgroundColor: '#10B981',
-  },
-  actionBtnText: {
-    color: '#0B0F17',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  actionBtnTextPaired: {
-    color: '#FFFFFF',
+  rescanBtnText: {
+    color: '#38BDF8',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

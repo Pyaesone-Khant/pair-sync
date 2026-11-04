@@ -11,6 +11,7 @@ export interface IPairRepository {
   getPairCount(): Promise<number>;
   savePair(pair: Pair): Promise<void>;
   updatePairStatus(id: string, status: PairStatus): Promise<void>;
+  deletePair(id: string): Promise<void>;
 }
 
 /**

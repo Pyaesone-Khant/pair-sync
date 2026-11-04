@@ -55,4 +55,23 @@ describe('Pair Domain Entity (ADR 0001 & CONTEXT.md)', () => {
     expect(pair.status).toBe(PairStatus.Revoked);
     expect(pair.isActive()).toBe(false);
   });
+
+  it('computes identical deterministic pair room ID regardless of peer ordering', () => {
+    const pairA = new Pair({
+      id: 'pair-1',
+      localDeviceId: 'device-alice',
+      peerDeviceId: 'device-bob',
+      peerPublicKey: 'pk-bob',
+    });
+
+    const pairB = new Pair({
+      id: 'pair-2',
+      localDeviceId: 'device-bob',
+      peerDeviceId: 'device-alice',
+      peerPublicKey: 'pk-alice',
+    });
+
+    expect(pairA.getPairRoomId()).toBe('device-alice_device-bob');
+    expect(pairB.getPairRoomId()).toBe('device-alice_device-bob');
+  });
 });

@@ -29,6 +29,11 @@ class InMemoryPairRepo implements IPairRepository {
       }
     }
   }
+  async deletePair(id: string): Promise<void> {
+    if (this.activePair && this.activePair.id === id) {
+      this.activePair = null;
+    }
+  }
 }
 
 class InMemoryMessageRepo implements IMessageRepository {

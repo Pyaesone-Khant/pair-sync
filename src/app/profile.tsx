@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../presentation/stores/auth-store';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
+import { getOrCreateLocalDeviceId } from '../infrastructure/security/device-key-manager';
 import { DesignTokens } from '../constants/theme';
 
 /**
@@ -24,7 +25,8 @@ import { DesignTokens } from '../constants/theme';
  */
 export default function ProfileScreen() {
   const { account, isLoading, signOut } = useAuthStore();
-  const [totalPairedCount, setTotalPairedCount] = useState<number>(1);
+  const [totalPairedCount, setTotalPairedCount] = useState<number>(0);
+  const [deviceId, setDeviceId] = useState<string>('...');
   const authService = getSupabaseAuthService();
 
   useEffect(() => {
@@ -32,9 +34,10 @@ export default function ProfileScreen() {
     async function loadPairedStats() {
       try {
         const count = await getDatabaseClient().getRepositories().pairRepo.getPairCount();
+        const id = await getOrCreateLocalDeviceId();
         if (mounted) {
-          // If 0, fallback to 1 if default demo pair exists
-          setTotalPairedCount(count > 0 ? count : 1);
+          setTotalPairedCount(count);
+          setDeviceId(id);
         }
       } catch (err) {
         console.warn('[ProfileScreen] Failed to load pair count:', err);
@@ -125,7 +128,9 @@ export default function ProfileScreen() {
             <View style={styles.metricRow}>
               <Text style={styles.metricLabel}>Total Paired Devices</Text>
               <View style={styles.metricBadge}>
-                <Text style={styles.metricBadgeText}>{totalPairedCount} Active Pair</Text>
+                <Text style={styles.metricBadgeText}>
+                  {totalPairedCount} Active Pair{totalPairedCount === 1 ? '' : 's'}
+                </Text>
               </View>
             </View>
 
@@ -133,7 +138,9 @@ export default function ProfileScreen() {
 
             <View style={styles.metricRow}>
               <Text style={styles.metricLabel}>Device ID</Text>
-              <Text style={styles.metricValue}>device-local-user</Text>
+              <Text style={styles.metricValue} numberOfLines={1}>
+                {deviceId}
+              </Text>
             </View>
           </View>
 

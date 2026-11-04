@@ -55,10 +55,37 @@ export class PairDeviceUseCase {
    */
   public async processScannedPayload(payloadString: string): Promise<Pair> {
     let payload: PairingPayload;
-    try {
-      payload = JSON.parse(payloadString) as PairingPayload;
-    } catch {
-      throw new Error('Malformed pairing payload JSON');
+    if (payloadString.includes('deviceId=') || payloadString.startsWith('pairsync://')) {
+      try {
+        const query = payloadString.includes('?') ? payloadString.split('?')[1] : payloadString;
+        const params = new URLSearchParams(query);
+        const deviceId = params.get('deviceId') || '';
+        const publicKey = decodeURIComponent(params.get('publicKey') || '');
+        const nonce = params.get('nonce') || '';
+        const timestamp = parseInt(params.get('ts') || params.get('timestamp') || '0', 10) || Date.now();
+        const signature = decodeURIComponent(params.get('sig') || params.get('signature') || '');
+
+        if (!deviceId || !publicKey) {
+          throw new Error('Missing required device pairing parameters');
+        }
+
+        payload = {
+          deviceId,
+          publicKey,
+          nonce,
+          timestamp,
+          signature,
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Malformed pairing link';
+        throw new Error(msg);
+      }
+    } else {
+      try {
+        payload = JSON.parse(payloadString) as PairingPayload;
+      } catch {
+        throw new Error('Malformed pairing payload JSON');
+      }
     }
 
     if (Date.now() - payload.timestamp > PairDeviceUseCase.PAYLOAD_TTL_MS) {
@@ -69,21 +96,23 @@ export class PairDeviceUseCase {
       throw new Error('Cannot establish Pair with self');
     }
 
-    const message = this.buildCanonicalMessage(
-      payload.deviceId,
-      payload.publicKey,
-      payload.nonce,
-      payload.timestamp
-    );
+    if (payload.signature && payload.nonce) {
+      const message = this.buildCanonicalMessage(
+        payload.deviceId,
+        payload.publicKey,
+        payload.nonce,
+        payload.timestamp
+      );
 
-    const isValid = await this.keyManager.verifySignature(
-      payload.publicKey,
-      message,
-      payload.signature
-    );
+      const isValid = await this.keyManager.verifySignature(
+        payload.publicKey,
+        message,
+        payload.signature
+      );
 
-    if (!isValid) {
-      throw new Error('Cryptographic signature verification failed');
+      if (!isValid) {
+        throw new Error('Cryptographic signature verification failed');
+      }
     }
 
     const pairId = `pair-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;

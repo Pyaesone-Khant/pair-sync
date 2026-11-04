@@ -12,12 +12,14 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { DesignTokens } from '../constants/theme';
 import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { CiphertextEnvelope } from '../domain/messaging/ciphertext-envelope';
 import { useCallStore } from '../presentation/stores/call-store';
+import { useLocationStore } from '../presentation/stores/location-store';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
-import { Pair, PairStatus } from '../domain/pairing/pair';
+import { Pair } from '../domain/pairing/pair';
 import { SendMessageUseCase } from '../application/use-cases/send-message.usecase';
 import { ReceiveMessageUseCase } from '../application/use-cases/receive-message.usecase';
 
@@ -30,122 +32,111 @@ interface LocalChatMessage {
 }
 
 export default function ChatScreen() {
+  const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [signalingChannel] = useState(() => getSignalingChannel());
+  const [activePair, setActivePair] = useState<Pair | null>(null);
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [sendUseCase, setSendUseCase] = useState<SendMessageUseCase | null>(null);
   const [receiveUseCase, setReceiveUseCase] = useState<ReceiveMessageUseCase | null>(null);
 
   useEffect(() => {
     let mounted = true;
+    let roomJoined: string | null = null;
+    let unsubscribeEnvelope: (() => void) | null = null;
 
     async function initChat() {
-      const { pairRepo, messageRepo } = getDatabaseClient().getRepositories();
+      try {
+        const { pairRepo, messageRepo } = getDatabaseClient().getRepositories();
 
-      // Ensure an active pair is loaded or initialized
-      let activePair = await pairRepo.getActivePair();
-      if (!activePair) {
-        activePair = new Pair({
-          id: 'pair-primary',
-          localDeviceId: 'device-local-user',
-          peerDeviceId: 'device-remote-peer',
-          peerPublicKey: 'ed25519-public-key-peer',
-          status: PairStatus.Active,
-        });
-        await pairRepo.savePair(activePair);
-      }
+        const pair = await pairRepo.getActivePair();
+        if (!mounted) return;
 
-      const sender = new SendMessageUseCase(pairRepo, messageRepo, signalingChannel);
-      const receiver = new ReceiveMessageUseCase(pairRepo, messageRepo);
+        if (!pair) {
+          setActivePair(null);
+          setMessages([]);
+          return;
+        }
 
-      if (!mounted) return;
-      setSendUseCase(sender);
-      setReceiveUseCase(receiver);
+        setActivePair(pair);
 
-      // Load previous conversation from local SQLite store
-      const storedEnvelopes = await messageRepo.getRecentEnvelopes(50);
-      if (storedEnvelopes.length > 0) {
-        const mappedMessages: LocalChatMessage[] = [];
-        for (const env of storedEnvelopes) {
-          const isMe = env.senderDeviceId === activePair.localDeviceId;
-          let plaintext = env.ciphertext;
-          if (plaintext.startsWith('plain:')) {
-            plaintext = plaintext.replace('plain:', '');
+        const sender = new SendMessageUseCase(pairRepo, messageRepo, signalingChannel);
+        const receiver = new ReceiveMessageUseCase(pairRepo, messageRepo);
+        setSendUseCase(sender);
+        setReceiveUseCase(receiver);
+
+        // Load historical encrypted messages from local SQLite store
+        const storedEnvelopes = await messageRepo.getRecentEnvelopes(50);
+        if (mounted && storedEnvelopes.length > 0) {
+          const mappedMessages: LocalChatMessage[] = [];
+          for (const env of storedEnvelopes) {
+            const isMe = env.senderDeviceId === pair.localDeviceId;
+            let plaintext = env.ciphertext;
+            if (plaintext.startsWith('plain:')) {
+              plaintext = plaintext.replace('plain:', '');
+            }
+            mappedMessages.push({
+              id: env.id,
+              sender: isMe ? 'me' : 'partner',
+              text: plaintext,
+              timestamp: new Date(env.timestamp).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+              isEncrypted: true,
+            });
           }
-          mappedMessages.push({
-            id: env.id,
-            sender: isMe ? 'me' : 'partner',
-            text: plaintext,
-            timestamp: new Date(env.timestamp).toLocaleTimeString([], {
+          setMessages(mappedMessages);
+        } else if (mounted) {
+          setMessages([]);
+        }
+
+        // Join real deterministic pair signaling room
+        roomJoined = pair.getPairRoomId();
+        signalingChannel.joinPairRoom(roomJoined);
+
+        unsubscribeEnvelope = signalingChannel.onEnvelopeReceived(async (envelope) => {
+          let incomingText = envelope.ciphertext;
+          if (incomingText.startsWith('plain:')) {
+            incomingText = incomingText.replace('plain:', '');
+          }
+
+          const incomingMessage: LocalChatMessage = {
+            id: envelope.id,
+            sender: 'partner',
+            text: incomingText,
+            timestamp: new Date(envelope.timestamp).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
             }),
             isEncrypted: true,
-          });
-        }
-        setMessages(mappedMessages);
-      } else {
-        // Initial welcoming conversation seeds
-        const initialSeeds: LocalChatMessage[] = [
-          {
-            id: 'init-1',
-            sender: 'partner',
-            text: 'Hey! I just left the office.',
-            timestamp: '14:20',
-            isEncrypted: true,
-          },
-          {
-            id: 'init-2',
-            sender: 'me',
-            text: 'Great, I see on the map you are ~1.2 km away. See you soon!',
-            timestamp: '14:22',
-            isEncrypted: true,
-          },
-        ];
-        setMessages(initialSeeds);
+          };
+
+          setMessages((prev) => [...prev, incomingMessage]);
+
+          // Persist to local SQLite store
+          try {
+            await messageRepo.saveEnvelope(envelope, 'incoming');
+          } catch (err) {
+            console.warn('[ChatScreen] Failed to store incoming envelope:', err);
+          }
+        });
+      } catch (err) {
+        console.warn('[ChatScreen] Initialization error:', err);
       }
     }
 
     initChat();
 
-    signalingChannel.joinPairRoom('pair-primary');
-
-    const unsubscribeEnvelope = signalingChannel.onEnvelopeReceived(async (envelope) => {
-      let incomingText = envelope.ciphertext;
-      if (incomingText.startsWith('plain:')) {
-        incomingText = incomingText.replace('plain:', '');
-      }
-
-      const incomingMessage: LocalChatMessage = {
-        id: envelope.id,
-        sender: 'partner',
-        text: incomingText,
-        timestamp: new Date(envelope.timestamp).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        isEncrypted: true,
-      };
-
-      setMessages((prev) => [...prev, incomingMessage]);
-
-      // Persist to local SQLite store
-      try {
-        const { messageRepo } = getDatabaseClient().getRepositories();
-        await messageRepo.saveEnvelope(envelope, 'incoming');
-      } catch (err) {
-        console.warn('[ChatScreen] Failed to store incoming envelope:', err);
-      }
-    });
-
     return () => {
       mounted = false;
-      unsubscribeEnvelope();
+      if (unsubscribeEnvelope) unsubscribeEnvelope();
+      if (roomJoined) signalingChannel.leavePairRoom();
     };
   }, [signalingChannel]);
 
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !activePair) return;
 
     const textToSend = inputText.trim();
     const newId = Date.now().toString();
@@ -166,11 +157,11 @@ export default function ChatScreen() {
       try {
         await sendUseCase.execute(textToSend);
       } catch {
-        // Fallback broadcast
+        // Fallback blind envelope transmission
         const envelope = new CiphertextEnvelope({
           id: newId,
-          senderDeviceId: 'device-local-user',
-          recipientDeviceId: 'device-remote-peer',
+          senderDeviceId: activePair.localDeviceId,
+          recipientDeviceId: activePair.peerDeviceId,
           iv: '123456789012',
           ciphertext: `plain:${textToSend}`,
           sequenceNumber: messages.length + 1,
@@ -182,8 +173,8 @@ export default function ChatScreen() {
     } else {
       const envelope = new CiphertextEnvelope({
         id: newId,
-        senderDeviceId: 'device-local-user',
-        recipientDeviceId: 'device-remote-peer',
+        senderDeviceId: activePair.localDeviceId,
+        recipientDeviceId: activePair.peerDeviceId,
         iv: '123456789012',
         ciphertext: `plain:${textToSend}`,
         sequenceNumber: messages.length + 1,
@@ -195,7 +186,13 @@ export default function ChatScreen() {
   };
 
   const handleShareLocationPing = async () => {
-    const pingText = '📍 Live Location Ping: 37.7749° N, 122.4194° W (Near Market St)';
+    if (!activePair) return;
+
+    const myCoord = useLocationStore.getState().myTelemetry.coordinate;
+    const pingText = myCoord
+      ? `📍 Live Location: ${myCoord.latitude.toFixed(4)}°, ${myCoord.longitude.toFixed(4)}°`
+      : '📍 Location ping (acquiring GPS fix...)';
+
     const newId = Date.now().toString();
     const locationMessage: LocalChatMessage = {
       id: newId,
@@ -209,8 +206,8 @@ export default function ChatScreen() {
     try {
       const envelope = new CiphertextEnvelope({
         id: newId,
-        senderDeviceId: 'device-local-user',
-        recipientDeviceId: 'device-remote-peer',
+        senderDeviceId: activePair.localDeviceId,
+        recipientDeviceId: activePair.peerDeviceId,
         iv: '123456789012',
         ciphertext: `plain:${pingText}`,
         sequenceNumber: messages.length + 1,
@@ -222,6 +219,32 @@ export default function ChatScreen() {
       console.warn('[ChatScreen] Failed to broadcast location ping:', err);
     }
   };
+
+  if (!activePair) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Encrypted Chat</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconBadge}>
+            <Ionicons name="chatbubbles-outline" size={38} color="#38BDF8" />
+          </View>
+          <Text style={styles.emptyTitle}>No Paired Partner</Text>
+          <Text style={styles.emptySubtitle}>
+            Pair with your partner to start an encrypted, peer-to-peer conversation with zero cloud storage.
+          </Text>
+          <TouchableOpacity
+            style={styles.pairNowBtn}
+            onPress={() => router.push('/pair')}
+            activeOpacity={0.85}>
+            <Ionicons name="qr-code-outline" size={17} color="#0B0F17" />
+            <Text style={styles.pairNowBtnText}>Pair Devices</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -237,7 +260,7 @@ export default function ChatScreen() {
                 <View style={styles.onlineDot} />
               </View>
               <View style={styles.titleContainer}>
-                <Text style={styles.title}>My Partner</Text>
+                <Text style={styles.title}>Partner</Text>
               </View>
             </View>
 
@@ -247,12 +270,11 @@ export default function ChatScreen() {
                 style={styles.headerActionBtn}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={() => {
-                  console.log('[ChatScreen] Initiating voice call to My Partner');
-                  const callId = useCallStore.getState().startOutgoingCall('My Partner', false);
+                  const callId = useCallStore.getState().startOutgoingCall('Partner', false);
                   signalingChannel.sendCallSignal({
                     type: 'offer',
                     callId,
-                    senderDeviceId: 'local-device',
+                    senderDeviceId: activePair.localDeviceId,
                     isVideo: false,
                     timestamp: Date.now(),
                   });
@@ -264,12 +286,11 @@ export default function ChatScreen() {
                 style={styles.headerActionBtn}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={() => {
-                  console.log('[ChatScreen] Initiating video call to My Partner');
-                  const callId = useCallStore.getState().startOutgoingCall('My Partner', true);
+                  const callId = useCallStore.getState().startOutgoingCall('Partner', true);
                   signalingChannel.sendCallSignal({
                     type: 'offer',
                     callId,
-                    senderDeviceId: 'local-device',
+                    senderDeviceId: activePair.localDeviceId,
                     isVideo: true,
                     timestamp: Date.now(),
                   });
@@ -287,6 +308,15 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyThreadContainer}>
+              <Ionicons name="shield-checkmark-outline" size={32} color="#10B981" />
+              <Text style={styles.emptyThreadTitle}>Encrypted 1-to-1 Channel</Text>
+              <Text style={styles.emptyThreadSubtitle}>
+                Messages are end-to-end encrypted and routed directly to your partner device.
+              </Text>
+            </View>
+          }
           renderItem={({ item }) => {
             const isMe = item.sender === 'me';
             return (
@@ -384,34 +414,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     flex: 1,
-    flexShrink: 1,
-    marginRight: 8,
   },
   partnerAvatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#F43F5E',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1E293B',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
   },
   partnerAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 17,
+    color: '#F8FAFC',
+    fontSize: 14,
     fontWeight: '700',
   },
   onlineDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#10B981',
     position: 'absolute',
     bottom: -1,
     right: -1,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#0B0F17',
   },
   titleContainer: {
@@ -421,72 +449,94 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 20,
     fontWeight: '700',
-    letterSpacing: -0.4,
-  },
-  subtitle: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 2,
+    letterSpacing: -0.5,
   },
   headerActionGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    zIndex: 20,
-    elevation: 20,
   },
   headerActionBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#1E293B',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  securityBanner: {
-    backgroundColor: '#151B26',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 7,
-    paddingHorizontal: 16,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    width: 36,
+    height: 36,
     borderRadius: 10,
+    backgroundColor: '#151B26',
     borderWidth: 1,
     borderColor: '#232B3A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  securityBannerLeft: {
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 14,
+  },
+  emptyIconBadge: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: '#151B26',
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  emptySubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  pairNowBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flex: 1,
+    gap: 8,
+    backgroundColor: '#38BDF8',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+    marginTop: 8,
   },
-  securityBannerText: {
-    color: '#E2E8F0',
-    fontSize: 11,
-    fontWeight: '500',
+  pairNowBtnText: {
+    color: '#0B0F17',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  securityBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
+  emptyThreadContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+    gap: 10,
   },
-  securityBadgeText: {
-    color: '#10B981',
-    fontSize: 10,
+  emptyThreadTitle: {
+    color: '#F8FAFC',
+    fontSize: 15,
     fontWeight: '600',
+  },
+  emptyThreadSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
   },
   messageList: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 16,
-    gap: 12,
+    paddingVertical: 12,
+    gap: 10,
+    flexGrow: 1,
   },
   messageBubbleWrapper: {
+    width: '100%',
     flexDirection: 'row',
   },
   myMessageWrapper: {
@@ -498,8 +548,9 @@ const styles = StyleSheet.create({
   messageBubble: {
     maxWidth: '78%',
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderRadius: 16,
   },
   myMessageBubble: {
     backgroundColor: '#0284C7',
@@ -507,25 +558,24 @@ const styles = StyleSheet.create({
   },
   partnerMessageBubble: {
     backgroundColor: '#151B26',
-    borderBottomLeftRadius: 4,
     borderWidth: 1,
     borderColor: '#232B3A',
+    borderBottomLeftRadius: 4,
   },
   messageText: {
     color: '#F8FAFC',
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 20,
   },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 4,
     gap: 4,
+    marginTop: 4,
   },
   timestampText: {
     fontSize: 10,
-    fontVariant: ['tabular-nums'],
   },
   myTimestampText: {
     color: 'rgba(255, 255, 255, 0.7)',
@@ -535,47 +585,43 @@ const styles = StyleSheet.create({
   },
   composerContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: '#151B26',
     borderTopWidth: 1,
     borderTopColor: '#232B3A',
-    alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   pingLocationBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: '#1E293B',
-    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
+    justifyContent: 'center',
   },
   textInput: {
     flex: 1,
     backgroundColor: '#0B0F17',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     color: '#F8FAFC',
-    fontSize: 15,
+    fontSize: 14,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    maxHeight: 100,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#232B3A',
   },
   sendButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#1E293B',
-    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
+    justifyContent: 'center',
   },
   sendButtonActive: {
     backgroundColor: '#38BDF8',
-    borderColor: '#38BDF8',
   },
 });

@@ -25,6 +25,11 @@ class FakePairRepository implements IPairRepository {
       if (status === PairStatus.Revoked) this.activePair.revoke();
     }
   }
+  async deletePair(id: string): Promise<void> {
+    if (this.activePair && this.activePair.id === id) {
+      this.activePair = null;
+    }
+  }
 }
 
 class FakeMessageRepository implements IMessageRepository {

@@ -30,40 +30,6 @@ export interface SafePlace {
   lastEvent: string;
 }
 
-const DEFAULT_SEEDS: Array<{
-  id: string;
-  name: string;
-  category: 'home' | 'work' | 'gym' | 'other';
-  radiusMeters: number;
-  latitude: number;
-  longitude: number;
-}> = [
-  {
-    id: '1',
-    name: 'Home',
-    category: 'home',
-    radiusMeters: 100,
-    latitude: 37.7749,
-    longitude: -122.4194,
-  },
-  {
-    id: '2',
-    name: 'Office',
-    category: 'work',
-    radiusMeters: 150,
-    latitude: 37.7899,
-    longitude: -122.4014,
-  },
-  {
-    id: '3',
-    name: 'Fitness Center',
-    category: 'gym',
-    radiusMeters: 80,
-    latitude: 37.765,
-    longitude: -122.42,
-  },
-];
-
 export default function PlacesScreen() {
   const myTelemetry = useLocationStore((state) => state.myTelemetry);
   const peerTelemetry = useLocationStore((state) => state.peerTelemetry);
@@ -79,47 +45,26 @@ export default function PlacesScreen() {
         const stored = await placeRepo.getAllPlaces();
         if (!mounted) return;
 
-        if (stored.length === 0) {
-          // Seed initial default places into SQLite
-          for (const seed of DEFAULT_SEEDS) {
-            await placeRepo.savePlace(
-              new Place({
-                id: seed.id,
-                name: seed.name,
-                coordinate: { latitude: seed.latitude, longitude: seed.longitude },
-                radiusMeters: seed.radiusMeters,
-              })
-            );
-          }
-          setPlaces(
-            DEFAULT_SEEDS.map((s) => ({
-              ...s,
+        setPlaces(
+          stored.map((p) => {
+            const lowerName = p.name.toLowerCase();
+            let cat: 'home' | 'work' | 'gym' | 'other' = 'other';
+            if (lowerName.includes('home')) cat = 'home';
+            else if (lowerName.includes('office') || lowerName.includes('work')) cat = 'work';
+            else if (lowerName.includes('gym') || lowerName.includes('fitness')) cat = 'gym';
+
+            return {
+              id: p.id,
+              name: p.name,
+              category: cat,
+              radiusMeters: p.radiusMeters,
+              latitude: p.coordinate.latitude,
+              longitude: p.coordinate.longitude,
               partnerPresent: false,
               lastEvent: 'Geofence active',
-            }))
-          );
-        } else {
-          setPlaces(
-            stored.map((p) => {
-              const lowerName = p.name.toLowerCase();
-              let cat: 'home' | 'work' | 'gym' | 'other' = 'other';
-              if (lowerName.includes('home')) cat = 'home';
-              else if (lowerName.includes('office') || lowerName.includes('work')) cat = 'work';
-              else if (lowerName.includes('gym') || lowerName.includes('fitness')) cat = 'gym';
-
-              return {
-                id: p.id,
-                name: p.name,
-                category: cat,
-                radiusMeters: p.radiusMeters,
-                latitude: p.coordinate.latitude,
-                longitude: p.coordinate.longitude,
-                partnerPresent: false,
-                lastEvent: 'Geofence active',
-              };
-            })
-          );
-        }
+            };
+          })
+        );
       } catch (err) {
         console.warn('[PlacesScreen] Failed to load places from SQLite:', err);
       }
@@ -262,22 +207,6 @@ export default function PlacesScreen() {
     );
   };
 
-  const togglePresence = (id: string) => {
-    setPlaces((prev) =>
-      prev.map((place) =>
-        place.id === id
-          ? {
-              ...place,
-              partnerPresent: !place.partnerPresent,
-              lastEvent: !place.partnerPresent ? 'Arrived just now' : 'Left just now',
-            }
-          : place
-      )
-    );
-  };
-
-  const presentCount = displayPlaces.filter((p) => p.partnerPresent).length;
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -380,30 +309,14 @@ export default function PlacesScreen() {
 
               {/* Card Footer Actions */}
               <View style={styles.cardFooter}>
-                {/* Simulation Toggle Pill */}
-                <TouchableOpacity
-                  style={[
-                    styles.presenceToggleBtn,
-                    item.partnerPresent
-                      ? styles.presenceToggleBtnActive
-                      : styles.presenceToggleBtnInactive,
-                  ]}
-                  onPress={() => togglePresence(item.id)}>
+                <View style={styles.cardFooterLeft}>
                   <Ionicons
-                    name={item.partnerPresent ? 'exit-outline' : 'enter-outline'}
-                    size={15}
-                    color={item.partnerPresent ? '#F43F5E' : '#38BDF8'}
+                    name={item.partnerPresent ? 'checkmark-circle' : 'time-outline'}
+                    size={14}
+                    color={item.partnerPresent ? '#10B981' : '#64748B'}
                   />
-                  <Text
-                    style={[
-                      styles.presenceToggleText,
-                      item.partnerPresent
-                        ? styles.presenceToggleTextActive
-                        : styles.presenceToggleTextInactive,
-                    ]}>
-                    {item.partnerPresent ? 'Simulate Departure' : 'Simulate Arrival'}
-                  </Text>
-                </TouchableOpacity>
+                  <Text style={styles.lastEventText}>{item.lastEvent}</Text>
+                </View>
 
                 {/* Quick Edit and Delete Icon Actions */}
                 <View style={styles.cardActionGroup}>
@@ -424,6 +337,21 @@ export default function PlacesScreen() {
               </View>
             </View>
           )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconBadge}>
+                <Ionicons name="shield-checkmark-outline" size={38} color="#38BDF8" />
+              </View>
+              <Text style={styles.emptyTitle}>No Safe Places Configured</Text>
+              <Text style={styles.emptySubtitle}>
+                Create geofenced zones (like Home or Office) to receive private automated arrival and departure alerts.
+              </Text>
+              <TouchableOpacity style={styles.emptyAddBtn} onPress={openAddModal} activeOpacity={0.85}>
+                <Ionicons name="pin" size={17} color="#0B0F17" />
+                <Text style={styles.emptyAddBtnText}>Add Safe Place</Text>
+              </TouchableOpacity>
+            </View>
+          }
         />
 
         {/* Add/Edit Modal with Interactive Geofence Map */}
@@ -816,37 +744,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  presenceToggleBtn: {
+  cardFooterLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  presenceToggleBtnActive: {
-    backgroundColor: 'rgba(244, 63, 94, 0.12)',
-    borderColor: '#F43F5E',
-  },
-  presenceToggleBtnInactive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    borderColor: '#38BDF8',
-  },
-  presenceToggleText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  presenceToggleTextActive: {
-    color: '#F43F5E',
-  },
-  presenceToggleTextInactive: {
-    color: '#38BDF8',
+    flex: 1,
   },
   cardActionGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 70,
+    paddingHorizontal: 28,
+    gap: 12,
+  },
+  emptyIconBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: '#151B26',
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  emptySubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  emptyAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#38BDF8',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  emptyAddBtnText: {
+    color: '#0B0F17',
+    fontSize: 14,
+    fontWeight: '700',
   },
   actionIconBtn: {
     width: 36,

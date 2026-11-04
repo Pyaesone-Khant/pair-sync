@@ -22,6 +22,7 @@ import { BoundaryEventService } from '../application/services/boundary-event-ser
 import { BoundaryEventBanner } from '../presentation/components/BoundaryEventBanner';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { useInterpolatedCoordinate } from '../presentation/hooks/useInterpolatedCoordinate';
+import { Pair } from '../domain/pairing/pair';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,29 +44,17 @@ export default function RadarScreen() {
     () => new BoundaryEventService(getDatabaseClient().getRepositories().placeRepo)
   );
 
+  const [activePair, setActivePair] = useState<Pair | null>(null);
+  const [places, setPlaces] = useState<DemoPlace[]>([]);
+
   const myTelemetry = useLocationStore((state) => state.myTelemetry);
   const peerTelemetry = useLocationStore((state) => state.peerTelemetry);
   const updateMyTelemetry = useLocationStore((state) => state.updateMyTelemetry);
   const updatePeerTelemetry = useLocationStore((state) => state.updatePeerTelemetry);
   const setPeerViewingMe = useLocationStore((state) => state.setPeerViewingMe);
 
-  // Live Places loaded from SQLite rendered as geofence circles on the map
-  const [places, setPlaces] = useState<DemoPlace[]>([
-    {
-      id: 'home',
-      name: 'Home',
-      latitude: 37.7749,
-      longitude: -122.4194,
-      radiusMeters: 120,
-    },
-    {
-      id: 'office',
-      name: 'Office',
-      latitude: 37.7899,
-      longitude: -122.4014,
-      radiusMeters: 180,
-    },
-  ]);
+  // Initialize live Supabase blind relay channel
+  const [signalingChannel] = useState(() => getSignalingChannel());
 
   // Load places dynamically from local SQLite database
   useEffect(() => {
@@ -83,6 +72,8 @@ export default function RadarScreen() {
               radiusMeters: p.radiusMeters,
             }))
           );
+        } else if (mounted) {
+          setPlaces([]);
         }
       } catch (err) {
         console.warn('[RadarScreen] Failed to load places from SQLite:', err);
@@ -94,62 +85,61 @@ export default function RadarScreen() {
     };
   }, []);
 
-  // Initialize live Supabase blind relay channel
-  const [signalingChannel] = useState(() => getSignalingChannel());
-
   useEffect(() => {
-    // 1. Initial fallback seeds for simulator preview before GPS fix
-    if (!myTelemetry.coordinate) {
-      updateMyTelemetry({
-        coordinate: { latitude: 37.7749, longitude: -122.4194 },
-        batteryPercent: 88,
-        isCharging: false,
-        motionActivity: 'Stationary',
-      });
+    let mounted = true;
+    let roomJoined: string | null = null;
+    let unsubscribeLocation: (() => void) | null = null;
+    let unsubscribeGaze: (() => void) | null = null;
+
+    async function initPairAndSignaling() {
+      try {
+        const pair = await getDatabaseClient().getRepositories().pairRepo.getActivePair();
+        if (!mounted) return;
+
+        if (pair) {
+          setActivePair(pair);
+          roomJoined = pair.getPairRoomId();
+          signalingChannel.joinPairRoom(roomJoined);
+
+          // Listen for incoming live peer location packets
+          unsubscribeLocation = signalingChannel.onLocationReceived((payload) => {
+            const motion =
+              payload.motionActivity === 'Driving' || payload.motionActivity === 'Walking'
+                ? payload.motionActivity
+                : 'Stationary';
+
+            updatePeerTelemetry({
+              coordinate: { latitude: payload.latitude, longitude: payload.longitude },
+              batteryPercent: payload.batteryPercent ?? null,
+              isCharging: Boolean(payload.isCharging),
+              motionActivity: motion,
+            });
+
+            boundaryService.evaluateCoordinateChange('peer', {
+              latitude: payload.latitude,
+              longitude: payload.longitude,
+            });
+          });
+
+          unsubscribeGaze = signalingChannel.onPeerGazeReceived((isViewing) => {
+            setPeerViewingMe(isViewing);
+          });
+        } else {
+          setActivePair(null);
+        }
+      } catch (err) {
+        console.warn('[RadarScreen] Error initializing pair bond:', err);
+      }
     }
 
-    if (!peerTelemetry.coordinate) {
-      updatePeerTelemetry({
-        coordinate: { latitude: 37.7833, longitude: -122.4167 },
-        batteryPercent: 42,
-        isCharging: true,
-        motionActivity: 'Walking',
-      });
-    }
+    initPairAndSignaling();
 
-    // 2. Connect to live Supabase Pair broadcast room
-    signalingChannel.joinPairRoom('pair-primary');
-
-    // 3. Listen for autonomous geofence boundary events
+    // Listen for autonomous geofence boundary events
     const unsubscribeBoundary = boundaryService.onBoundaryEvent((event) => {
       setLatestBoundaryEvent(event);
     });
 
-    // 4. Listen for incoming live peer location packets
-    const unsubscribeLocation = signalingChannel.onLocationReceived((payload) => {
-      const motion =
-        payload.motionActivity === 'Driving' || payload.motionActivity === 'Walking'
-          ? payload.motionActivity
-          : 'Stationary';
-
-      updatePeerTelemetry({
-        coordinate: { latitude: payload.latitude, longitude: payload.longitude },
-        batteryPercent: payload.batteryPercent ?? null,
-        isCharging: Boolean(payload.isCharging),
-        motionActivity: motion,
-      });
-
-      boundaryService.evaluateCoordinateChange('peer', {
-        latitude: payload.latitude,
-        longitude: payload.longitude,
-      });
-    });
-
-    const unsubscribeGaze = signalingChannel.onPeerGazeReceived((isViewing) => {
-      setPeerViewingMe(isViewing);
-    });
-
-    // 5. Start physical hardware GPS & Battery tracking engine
+    // Start physical hardware GPS & Battery tracking engine
     const locationEngine = new HardwareLocationEngine({
       stateMachine,
       signalingPort: signalingChannel,
@@ -173,24 +163,29 @@ export default function RadarScreen() {
     locationEngine.start();
 
     return () => {
+      mounted = false;
       locationEngine.stop();
-      unsubscribeLocation();
-      unsubscribeGaze();
+      if (unsubscribeLocation) unsubscribeLocation();
+      if (unsubscribeGaze) unsubscribeGaze();
       unsubscribeBoundary();
-      signalingChannel.leavePairRoom();
+      if (roomJoined) signalingChannel.leavePairRoom();
     };
-  }, [stateMachine, signalingChannel, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
+  }, [stateMachine, signalingChannel, boundaryService, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
 
   const fitBothInView = () => {
-    if (!myTelemetry.coordinate || !peerTelemetry.coordinate || !mapRef.current) return;
+    if (!mapRef.current) return;
 
-    mapRef.current.fitToCoordinates(
-      [myTelemetry.coordinate, peerTelemetry.coordinate],
-      {
-        edgePadding: { top: 120, right: 60, bottom: 320, left: 60 },
-        animated: true,
-      }
-    );
+    if (myTelemetry.coordinate && peerTelemetry.coordinate) {
+      mapRef.current.fitToCoordinates(
+        [myTelemetry.coordinate, peerTelemetry.coordinate],
+        {
+          edgePadding: { top: 120, right: 60, bottom: 320, left: 60 },
+          animated: true,
+        }
+      );
+    } else if (myTelemetry.coordinate) {
+      centerOnMe();
+    }
   };
 
   const centerOnPartner = () => {
@@ -221,46 +216,11 @@ export default function RadarScreen() {
     );
   };
 
-  const handleToggleMotion = () => {
-    const isCurrentlyMoving = currentMode === LocationStateMode.Transit;
-    const nextMoving = !isCurrentlyMoving;
-    stateMachine.onMotionActivityChanged({
-      isMoving: nextMoving,
-      confidence: 'high',
-    });
-    const newMode = stateMachine.getCurrentMode();
-    setCurrentMode(newMode);
-
-    // If moving, simulate partner stepping into Home geofence (37.7749, -122.4194)
-    // If stopping, step out into transit (37.7850, -122.4150)
-    const newCoord = nextMoving
-      ? { latitude: 37.7749, longitude: -122.4194 } // Home center
-      : { latitude: 37.7850, longitude: -122.4150 }; // In transit
-    const newMotion = nextMoving ? 'Walking' : 'Stationary';
-
-    updatePeerTelemetry({
-      coordinate: newCoord,
-      motionActivity: newMotion,
-    });
-
-    boundaryService.evaluateCoordinateChange('peer', newCoord);
-  };
-
-  const handleTogglePeerGaze = () => {
-    const isCurrentlyViewing = stateMachine.getCurrentMode() === LocationStateMode.LiveViewing;
-    const nextViewingState = !isCurrentlyViewing;
-    stateMachine.onPeerGazeChanged({ isViewing: nextViewingState });
-    const newMode = stateMachine.getCurrentMode();
-    setCurrentMode(newMode);
-    setPeerViewingMe(nextViewingState);
-    signalingChannel.sendPeerGaze(nextViewingState);
-  };
-
-  const myCoord = myTelemetry.coordinate ?? { latitude: 37.7749, longitude: -122.4194 };
-  const peerCoord = peerTelemetry.coordinate ?? { latitude: 37.7833, longitude: -122.4167 };
+  const defaultCenter = { latitude: 37.7749, longitude: -122.4194 };
+  const userCenter = myTelemetry.coordinate ?? defaultCenter;
 
   // Smooth 60fps algorithmic coordinate interpolation (ADR 0007)
-  const { coordinate: animatedPeerCoord, bearing: peerBearing } = useInterpolatedCoordinate(
+  const { coordinate: animatedPeerCoord } = useInterpolatedCoordinate(
     peerTelemetry.coordinate,
     1200
   );
@@ -275,8 +235,8 @@ export default function RadarScreen() {
         style={styles.map}
         userInterfaceStyle="dark"
         initialRegion={{
-          latitude: (myCoord.latitude + peerCoord.latitude) / 2,
-          longitude: (myCoord.longitude + peerCoord.longitude) / 2,
+          latitude: userCenter.latitude,
+          longitude: userCenter.longitude,
           latitudeDelta: 0.035,
           longitudeDelta: 0.035,
         }}>
@@ -293,58 +253,69 @@ export default function RadarScreen() {
         ))}
 
         {/* User Marker ("You") */}
-        <Marker coordinate={myCoord} title="You" anchor={{ x: 0.5, y: 0.5 }}>
-          <View style={styles.userMarkerContainer}>
-            <View style={styles.userPulseRing} />
-            <View style={styles.userDot}>
-              <Text style={styles.markerText}>You</Text>
+        {myTelemetry.coordinate && (
+          <Marker
+            coordinate={myTelemetry.coordinate}
+            title="You"
+            anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.userMarkerContainer}>
+              <View style={styles.userPulseRing} />
+              <View style={styles.userDot}>
+                <Text style={styles.markerText}>You</Text>
+              </View>
             </View>
-          </View>
-        </Marker>
+          </Marker>
+        )}
 
         {/* Partner Marker ("Partner") with Coordinate Interpolation */}
-        <Marker
-          coordinate={animatedPeerCoord ?? peerCoord}
-          title="Partner"
-          anchor={{ x: 0.5, y: 0.8 }}>
-          <View style={styles.peerMarkerContainer}>
-            <View style={styles.peerCalloutBubble}>
-              <Ionicons
-                name={
-                  (peerTelemetry.batteryPercent ?? 0) <= 20
-                    ? 'battery-dead'
-                    : (peerTelemetry.batteryPercent ?? 0) <= 50
-                    ? 'battery-half'
-                    : 'battery-full'
-                }
-                size={12}
-                color={peerTelemetry.batteryPercent !== null && peerTelemetry.batteryPercent <= 20 ? '#EF4444' : '#10B981'}
-              />
-              <Text style={styles.peerCalloutText}>
-                {peerTelemetry.batteryPercent !== null ? `${peerTelemetry.batteryPercent}%` : '--%'}
-              </Text>
-              <Text style={styles.peerCalloutDivider}>•</Text>
-              <Ionicons
-                name={
-                  peerTelemetry.motionActivity === 'Driving'
-                    ? 'car-outline'
-                    : peerTelemetry.motionActivity === 'Walking'
-                    ? 'walk-outline'
-                    : 'home-outline'
-                }
-                size={12}
-                color="#F8FAFC"
-              />
-              <Text style={styles.peerCalloutText}>
-                {peerTelemetry.motionActivity ?? 'Stationary'}
-              </Text>
+        {activePair && peerTelemetry.coordinate && (
+          <Marker
+            coordinate={animatedPeerCoord ?? peerTelemetry.coordinate}
+            title="Partner"
+            anchor={{ x: 0.5, y: 0.8 }}>
+            <View style={styles.peerMarkerContainer}>
+              <View style={styles.peerCalloutBubble}>
+                <Ionicons
+                  name={
+                    (peerTelemetry.batteryPercent ?? 0) <= 20
+                      ? 'battery-dead'
+                      : (peerTelemetry.batteryPercent ?? 0) <= 50
+                      ? 'battery-half'
+                      : 'battery-full'
+                  }
+                  size={12}
+                  color={
+                    peerTelemetry.batteryPercent !== null && peerTelemetry.batteryPercent <= 20
+                      ? '#EF4444'
+                      : '#10B981'
+                  }
+                />
+                <Text style={styles.peerCalloutText}>
+                  {peerTelemetry.batteryPercent !== null ? `${peerTelemetry.batteryPercent}%` : '--%'}
+                </Text>
+                <Text style={styles.peerCalloutDivider}>•</Text>
+                <Ionicons
+                  name={
+                    peerTelemetry.motionActivity === 'Driving'
+                      ? 'car-outline'
+                      : peerTelemetry.motionActivity === 'Walking'
+                      ? 'walk-outline'
+                      : 'home-outline'
+                  }
+                  size={12}
+                  color="#F8FAFC"
+                />
+                <Text style={styles.peerCalloutText}>
+                  {peerTelemetry.motionActivity ?? 'Stationary'}
+                </Text>
+              </View>
+              <View style={styles.peerAvatarCircle}>
+                <Text style={styles.peerAvatarText}>P</Text>
+              </View>
+              <View style={styles.peerPinTip} />
             </View>
-            <View style={styles.peerAvatarCircle}>
-              <Text style={styles.peerAvatarText}>P</Text>
-            </View>
-            <View style={styles.peerPinTip} />
-          </View>
-        </Marker>
+          </Marker>
+        )}
       </MapView>
 
       {/* Autonomous Geofence Boundary Alert Banner */}
@@ -372,21 +343,23 @@ export default function RadarScreen() {
         <TouchableOpacity
           style={styles.circleBtn}
           onPress={fitBothInView}
-          accessibilityLabel="Fit both peers in view">
+          accessibilityLabel="Fit peers in view">
           <Ionicons name="scan-outline" size={20} color="#38BDF8" />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.circleBtn}
-          onPress={centerOnPartner}
-          accessibilityLabel="Center camera on partner">
-          <Ionicons name="heart" size={20} color="#F43F5E" />
-        </TouchableOpacity>
+        {activePair && peerTelemetry.coordinate && (
+          <TouchableOpacity
+            style={styles.circleBtn}
+            onPress={centerOnPartner}
+            accessibilityLabel="Center on partner">
+            <Ionicons name="heart" size={20} color="#F43F5E" />
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={styles.circleBtn}
           onPress={centerOnMe}
-          accessibilityLabel="Center camera on my location">
+          accessibilityLabel="Center on my location">
           <Ionicons name="navigate" size={20} color="#38BDF8" />
         </TouchableOpacity>
 
@@ -400,72 +373,62 @@ export default function RadarScreen() {
 
       {/* Bottom Floating Control Panel */}
       <View style={styles.bottomOverlay}>
-        {/* Battery Engine Info Card */}
-        <View style={styles.batteryEngineCard}>
-          <View style={styles.engineTextRow}>
-            <View style={styles.engineTitleWithIcon}>
-              <Ionicons name="hardware-chip-outline" size={14} color="#38BDF8" />
-              <Text style={styles.engineTitle}>Adaptive Battery Engine</Text>
+        {activePair ? (
+          <>
+            {/* Battery Engine Info Card */}
+            <View style={styles.batteryEngineCard}>
+              <View style={styles.engineTextRow}>
+                <View style={styles.engineTitleWithIcon}>
+                  <Ionicons name="hardware-chip-outline" size={14} color="#38BDF8" />
+                  <Text style={styles.engineTitle}>Adaptive Battery Engine</Text>
+                </View>
+                <Text style={styles.engineStatus}>
+                  {stateMachine.isHighAccuracyGpsActive()
+                    ? `High Accuracy (${stateMachine.getUpdateIntervalSeconds()}s)`
+                    : 'Power Saving (300s)'}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.engineStatus}>
-              {stateMachine.isHighAccuracyGpsActive()
-                ? `High Accuracy (${stateMachine.getUpdateIntervalSeconds()}s)`
-                : 'Power Saving (300s)'}
-            </Text>
-          </View>
 
-          <View style={styles.controlsRow}>
-            <TouchableOpacity style={styles.controlBtn} onPress={handleToggleMotion}>
-              <Ionicons
-                name={currentMode === LocationStateMode.Transit ? 'pause-circle-outline' : 'walk-outline'}
-                size={14}
-                color="#F8FAFC"
-              />
-              <Text style={styles.controlBtnText}>
-                {currentMode === LocationStateMode.Transit ? 'Stop Walking' : 'Simulate Walking'}
-              </Text>
-            </TouchableOpacity>
-
+            {/* Ambient Partner Status Card */}
+            <PartnerStatusCard
+              partnerName="Partner"
+              onInitiateCall={() => {
+                const callId = useCallStore.getState().startOutgoingCall('Partner', false);
+                signalingChannel.sendCallSignal({
+                  type: 'offer',
+                  callId,
+                  senderDeviceId: activePair.localDeviceId,
+                  isVideo: false,
+                  timestamp: Date.now(),
+                });
+              }}
+              onOpenChat={() => router.push('/chat')}
+            />
+          </>
+        ) : (
+          /* Unbonded State Banner */
+          <View style={styles.unbondedCard}>
+            <View style={styles.unbondedHeaderRow}>
+              <View style={styles.unbondedIconBadge}>
+                <Ionicons name="link-outline" size={22} color="#38BDF8" />
+              </View>
+              <View style={styles.unbondedTextCol}>
+                <Text style={styles.unbondedTitle}>No Paired Partner</Text>
+                <Text style={styles.unbondedSubtitle}>
+                  Pair with your partner to share real-time location, safe places alerts, and encrypted chat.
+                </Text>
+              </View>
+            </View>
             <TouchableOpacity
-              style={[
-                styles.controlBtn,
-                stateMachine.getCurrentMode() === LocationStateMode.LiveViewing &&
-                  styles.controlBtnActive,
-              ]}
-              onPress={handleTogglePeerGaze}>
-              <Ionicons
-                name={
-                  stateMachine.getCurrentMode() === LocationStateMode.LiveViewing
-                    ? 'eye-off-outline'
-                    : 'eye-outline'
-                }
-                size={14}
-                color="#F8FAFC"
-              />
-              <Text style={styles.controlBtnText}>
-                {stateMachine.getCurrentMode() === LocationStateMode.LiveViewing
-                  ? 'Close Live Gaze'
-                  : 'Simulate Live Gaze'}
-              </Text>
+              style={styles.pairNowBtn}
+              onPress={() => router.push('/pair')}
+              activeOpacity={0.85}>
+              <Ionicons name="qr-code-outline" size={16} color="#0B0F17" />
+              <Text style={styles.pairNowBtnText}>Start Pairing Ceremony</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* Ambient Partner Status Card */}
-        <PartnerStatusCard
-          partnerName="My Partner"
-          onInitiateCall={() => {
-            const callId = useCallStore.getState().startOutgoingCall('My Partner', false);
-            signalingChannel.sendCallSignal({
-              type: 'offer',
-              callId,
-              senderDeviceId: 'local-device',
-              isVideo: false,
-              timestamp: Date.now(),
-            });
-          }}
-          onOpenChat={() => router.push('/chat')}
-        />
+        )}
       </View>
     </View>
   );
@@ -498,81 +461,68 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     backgroundColor: 'rgba(11, 15, 23, 0.75)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomColor: 'rgba(35, 43, 58, 0.6)',
   },
   brandTitle: {
     color: '#F8FAFC',
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: -0.5,
-  },
-  connectionBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  connectionBadge: {
-    color: '#10B981',
-    fontSize: 12,
-    fontWeight: '500',
   },
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    gap: 5,
+    backgroundColor: 'rgba(30, 41, 59, 0.85)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#334155',
-    gap: 4,
   },
   modePillLabel: {
     color: '#94A3B8',
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '500',
   },
   modePillValue: {
     color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'capitalize',
   },
   floatingControls: {
     position: 'absolute',
     right: 16,
     top: 130,
-    gap: 10,
+    gap: 12,
   },
   circleBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#151B26',
-    borderWidth: 1,
-    borderColor: '#232B3A',
+    backgroundColor: 'rgba(21, 27, 38, 0.92)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#232B3A',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 6,
-  },
-  circleBtnText: {
-    fontSize: 18,
   },
   bottomOverlay: {
     position: 'absolute',
     bottom: 84,
-    left: 0,
-    right: 0,
-    paddingBottom: 6,
+    left: 16,
+    right: 16,
+    gap: 8,
   },
   batteryEngineCard: {
-    backgroundColor: 'rgba(21, 27, 38, 0.95)',
-    borderRadius: 18,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    backgroundColor: 'rgba(21, 27, 38, 0.92)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: '#232B3A',
   },
@@ -580,7 +530,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
   engineTitleWithIcon: {
     flexDirection: 'row',
@@ -588,68 +537,95 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   engineTitle: {
-    color: '#F1F5F9',
-    fontSize: 13,
+    color: '#F8FAFC',
+    fontSize: 12,
     fontWeight: '600',
   },
   engineStatus: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '500',
+    color: '#94A3B8',
+    fontSize: 11,
   },
-  controlsRow: {
-    flexDirection: 'row',
-    gap: 10,
+  unbondedCard: {
+    backgroundColor: '#151B26',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
   },
-  controlBtn: {
-    flex: 1,
+  unbondedHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: '#1E293B',
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    gap: 12,
+  },
+  unbondedIconBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#1E293B',
     borderWidth: 1,
     borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  controlBtnActive: {
-    backgroundColor: '#F43F5E',
-    borderColor: '#F43F5E',
+  unbondedTextCol: {
+    flex: 1,
   },
-  controlBtnText: {
+  unbondedTitle: {
     color: '#F8FAFC',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  unbondedSubtitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  pairNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#38BDF8',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  pairNowBtnText: {
+    color: '#0B0F17',
+    fontSize: 14,
+    fontWeight: '700',
   },
   userMarkerContainer: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   userPulseRing: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(56, 189, 248, 0.25)',
     position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(56, 189, 248, 0.3)',
   },
   userDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: '#38BDF8',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   markerText: {
-    color: '#FFFFFF',
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#0B0F17',
   },
   peerMarkerContainer: {
     alignItems: 'center',
@@ -657,51 +633,50 @@ const styles = StyleSheet.create({
   peerCalloutBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(21, 27, 38, 0.95)',
+    gap: 4,
+    backgroundColor: '#151B26',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#F43F5E',
+    borderColor: '#232B3A',
     marginBottom: 4,
-    gap: 4,
-  },
-  peerCalloutDivider: {
-    color: '#64748B',
-    fontSize: 10,
-    marginHorizontal: 1,
   },
   peerCalloutText: {
     color: '#F8FAFC',
     fontSize: 10,
     fontWeight: '600',
   },
+  peerCalloutDivider: {
+    color: '#475569',
+    fontSize: 10,
+  },
   peerAvatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F43F5E',
-    justifyContent: 'center',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#10B981',
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    shadowColor: '#F43F5E',
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
   },
   peerAvatarText: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
   },
   peerPinTip: {
     width: 0,
     height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
     borderLeftWidth: 5,
     borderRightWidth: 5,
+    borderBottomWidth: 0,
     borderTopWidth: 6,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#F43F5E',
+    borderTopColor: '#10B981',
   },
 });

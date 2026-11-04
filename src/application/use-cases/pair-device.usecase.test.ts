@@ -36,6 +36,12 @@ class MockPairRepository implements IPairRepository {
       }
     }
   }
+
+  public async deletePair(id: string): Promise<void> {
+    if (this.activePair && this.activePair.id === id) {
+      this.activePair = null;
+    }
+  }
 }
 
 describe('PairDeviceUseCase (ADR 0001, ADR 0006 & Pairing Ceremony)', () => {

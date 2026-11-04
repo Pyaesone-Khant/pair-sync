@@ -85,6 +85,11 @@ export class DatabaseClient {
         radius_meters REAL NOT NULL,
         created_at INTEGER NOT NULL
       );
+
+      -- Purge any legacy mock/demo records so new user logins are strictly empty & real
+      DELETE FROM pairs WHERE id = 'pair-primary' OR peer_device_id = 'device-remote-peer';
+      DELETE FROM places WHERE id IN ('1', '2', '3', 'place-home', 'place-office', 'place-gym');
+      DELETE FROM messages WHERE id IN ('init-1', 'init-2');
     `;
 
     this.executor.exec(ddl);

@@ -62,20 +62,6 @@ export default function TabLayout() {
         console.log('[TabLayout] User logged out via deep link');
       }
 
-      // Handle demo authentication for rapid verification
-      if (url.includes('auth/demo') || url.includes('demo=1')) {
-        const { Account } = await import('../domain/auth/account');
-        const demoAccount = new Account({
-          id: 'google-usr-demo-alex',
-          email: 'alex.morgan@gmail.com',
-          fullName: 'Alex Morgan',
-          avatarUrl: null,
-          createdAt: Date.now(),
-        });
-        setAccount(demoAccount);
-        console.log('[TabLayout] Demo user authenticated via deep link');
-      }
-
       // Handle call simulation deep links for verification & testing (ADR 0005)
       if (url.includes('call=start') || url.includes('call/start')) {
         const isVideo = url.includes('video=1') || url.includes('video=true');
@@ -102,10 +88,12 @@ export default function TabLayout() {
           if (peerDeviceId && peerPublicKey) {
             const { getDatabaseClient } = await import('../infrastructure/database/database-client');
             const { Pair } = await import('../domain/pairing/pair');
+            const { getOrCreateLocalDeviceId } = await import('../infrastructure/security/device-key-manager');
+            const localDeviceId = await getOrCreateLocalDeviceId();
             const pairRepo = getDatabaseClient().getRepositories().pairRepo;
             const newPair = new Pair({
               id: `pair-${Date.now()}`,
-              localDeviceId: 'device-local-user',
+              localDeviceId,
               peerDeviceId,
               peerPublicKey,
             });
@@ -138,21 +126,36 @@ export default function TabLayout() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const signaling = getSignalingChannel();
-    signaling.joinPairRoom('pair-primary');
+    let callUnsub: (() => void) | null = null;
+    let roomJoined: string | null = null;
 
-    const callUnsub = signaling.onCallSignalReceived((signal) => {
-      if (signal.type === 'offer') {
-        useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
-      } else if (signal.type === 'answer') {
-        useCallStore.getState().acceptCall();
-      } else if (signal.type === 'hangup' || signal.type === 'reject') {
-        useCallStore.getState().endCall();
-      }
-    });
+    async function initSignaling() {
+      const { getDatabaseClient } = await import('../infrastructure/database/database-client');
+      const activePair = await getDatabaseClient().getRepositories().pairRepo.getActivePair();
+      if (!activePair) return;
+
+      const signaling = getSignalingChannel();
+      roomJoined = activePair.getPairRoomId();
+      signaling.joinPairRoom(roomJoined);
+
+      callUnsub = signaling.onCallSignalReceived((signal) => {
+        if (signal.type === 'offer') {
+          useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
+        } else if (signal.type === 'answer') {
+          useCallStore.getState().acceptCall();
+        } else if (signal.type === 'hangup' || signal.type === 'reject') {
+          useCallStore.getState().endCall();
+        }
+      });
+    }
+
+    initSignaling();
 
     return () => {
-      callUnsub();
+      if (callUnsub) callUnsub();
+      if (roomJoined) {
+        getSignalingChannel().leavePairRoom();
+      }
     };
   }, [isAuthenticated]);
 
