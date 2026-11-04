@@ -12,6 +12,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Circle } from 'react-native-maps';
@@ -106,6 +107,7 @@ export default function PlacesScreen() {
   }, [places, peerTelemetry.coordinate]);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
   const [categoryInput, setCategoryInput] = useState<'home' | 'work' | 'gym' | 'other'>('home');
@@ -140,6 +142,7 @@ export default function PlacesScreen() {
     setSelectedCategoryFilter('All');
     setRadiusInput(100);
     setTargetCoord(myTelemetry.coordinate ?? { latitude: 16.8052, longitude: 96.1561 });
+    setIsMapExpanded(false);
     setModalVisible(true);
   };
 
@@ -159,6 +162,7 @@ export default function PlacesScreen() {
     setSelectedCategoryFilter('All');
     setRadiusInput(place.radiusMeters);
     setTargetCoord({ latitude: place.latitude, longitude: place.longitude });
+    setIsMapExpanded(false);
     setModalVisible(true);
   };
 
@@ -405,8 +409,12 @@ export default function PlacesScreen() {
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.modalScrollContent}>
-                {/* Live Geofence Map Preview */}
-                <View style={styles.modalMapWrapper}>
+                {/* Live Geofence Map Preview (Compact with Tap to Expand) */}
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  style={styles.modalMapWrapper}
+                  onPress={() => setIsMapExpanded(true)}
+                  accessibilityLabel="Tap to expand fullscreen map">
                   <MapView
                     style={styles.modalMap}
                     userInterfaceStyle="dark"
@@ -416,9 +424,9 @@ export default function PlacesScreen() {
                       latitudeDelta: 0.008,
                       longitudeDelta: 0.008,
                     }}
-                    onPress={(e) => setTargetCoord(e.nativeEvent.coordinate)}
-                    scrollEnabled={true}
-                    zoomEnabled={true}>
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    pointerEvents="none">
                     <Circle
                       center={targetCoord}
                       radius={radiusInput}
@@ -426,19 +434,22 @@ export default function PlacesScreen() {
                       strokeColor="#38BDF8"
                       strokeWidth={2}
                     />
-                    <Marker
-                      coordinate={targetCoord}
-                      draggable
-                      onDragEnd={(e) => setTargetCoord(e.nativeEvent.coordinate)}
-                    />
+                    <Marker coordinate={targetCoord} />
                   </MapView>
+
+                  {/* Expand Floating Badge */}
+                  <View style={styles.expandActionBadge}>
+                    <Ionicons name="expand" size={13} color="#0B0F17" />
+                    <Text style={styles.expandActionBadgeText}>Expand & Pinpoint</Text>
+                  </View>
+
                   <View style={styles.mapRadiusBadge}>
                     <Ionicons name="radio-outline" size={12} color="#38BDF8" />
                     <Text style={styles.mapRadiusBadgeText}>
-                      {radiusInput}m Geofence Perimeter • Tap map or drag pin
+                      {radiusInput}m Perimeter • Tap to expand map
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {/* Quick Location Action Button */}
                 <TouchableOpacity
@@ -586,6 +597,145 @@ export default function PlacesScreen() {
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
+        </Modal>
+
+        {/* Fullscreen Precision Geofence Map Modal */}
+        <Modal
+          visible={isMapExpanded}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setIsMapExpanded(false)}>
+          <View style={styles.fullscreenMapContainer}>
+            <StatusBar barStyle="light-content" />
+
+            {/* Native Fullscreen Interactive Map */}
+            <MapView
+              style={styles.fullscreenMapView}
+              userInterfaceStyle="dark"
+              initialRegion={{
+                latitude: targetCoord.latitude,
+                longitude: targetCoord.longitude,
+                latitudeDelta: 0.006,
+                longitudeDelta: 0.006,
+              }}
+              onPress={(e) => setTargetCoord(e.nativeEvent.coordinate)}
+              scrollEnabled={true}
+              zoomEnabled={true}
+              rotateEnabled={true}>
+              <Circle
+                center={targetCoord}
+                radius={radiusInput}
+                fillColor="rgba(56, 189, 248, 0.22)"
+                strokeColor="#38BDF8"
+                strokeWidth={2}
+              />
+              <Marker
+                coordinate={targetCoord}
+                draggable
+                title="Safe Place Center"
+                description="Drag to adjust position"
+                onDragEnd={(e) => setTargetCoord(e.nativeEvent.coordinate)}>
+                <View style={styles.precisionMarker}>
+                  <View style={styles.precisionMarkerInner}>
+                    <Ionicons
+                      name={(selectedIcon as keyof typeof Ionicons.glyphMap) || 'shield-checkmark'}
+                      size={18}
+                      color="#38BDF8"
+                    />
+                  </View>
+                  <View style={styles.precisionMarkerArrow} />
+                </View>
+              </Marker>
+            </MapView>
+
+            {/* Floating Top Navigation Header */}
+            <SafeAreaView style={styles.fullscreenTopHeaderSafeArea} pointerEvents="box-none">
+              <View style={styles.fullscreenTopHeaderBar} pointerEvents="box-none">
+                <TouchableOpacity
+                  style={styles.fullscreenGlassCloseBtn}
+                  onPress={() => setIsMapExpanded(false)}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Close full screen map">
+                  <Ionicons name="close" size={20} color="#F8FAFC" />
+                </TouchableOpacity>
+
+                <View style={styles.fullscreenHeaderCenter}>
+                  <Text style={styles.fullscreenHeaderTitle}>Pinpoint Location</Text>
+                  <Text style={styles.fullscreenHeaderSubtitle}>
+                    {targetCoord.latitude.toFixed(4)}°, {targetCoord.longitude.toFixed(4)}°
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.fullscreenDoneBtn}
+                  onPress={() => setIsMapExpanded(false)}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Confirm location">
+                  <Ionicons name="checkmark" size={16} color="#0B0F17" />
+                  <Text style={styles.fullscreenDoneBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+
+            {/* Floating Bottom Precision Control Panel */}
+            <SafeAreaView style={styles.fullscreenBottomControlsSafeArea} pointerEvents="box-none">
+              <View style={styles.fullscreenBottomCard}>
+                {/* Center on GPS button & gesture tip */}
+                <View style={styles.fullscreenLocateRow}>
+                  <TouchableOpacity
+                    style={styles.fullscreenLocateBtn}
+                    onPress={handleUseCurrentLocation}
+                    activeOpacity={0.8}>
+                    <Ionicons name="locate" size={15} color="#38BDF8" />
+                    <Text style={styles.fullscreenLocateBtnText}>Snap to My Current GPS</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.fullscreenHelpPill}>
+                    <Ionicons name="finger-print-outline" size={13} color="#94A3B8" />
+                    <Text style={styles.fullscreenHelpText}>Tap map or drag pin</Text>
+                  </View>
+                </View>
+
+                {/* Radius selector */}
+                <View style={styles.fullscreenRadiusSection}>
+                  <Text style={styles.fullscreenRadiusLabel}>
+                    Geofence Radius: <Text style={styles.fullscreenRadiusHighlight}>{radiusInput} meters</Text>
+                  </Text>
+                  <View style={styles.fullscreenRadiusRow}>
+                    {[50, 100, 150, 250, 500].map((r) => {
+                      const isSelected = radiusInput === r;
+                      return (
+                        <TouchableOpacity
+                          key={r}
+                          style={[
+                            styles.fullscreenRadiusChip,
+                            isSelected && styles.fullscreenRadiusChipActive,
+                          ]}
+                          onPress={() => setRadiusInput(r)}>
+                          <Text
+                            style={[
+                              styles.fullscreenRadiusChipText,
+                              isSelected && styles.fullscreenRadiusChipTextActive,
+                            ]}>
+                            {r}m
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Confirm button */}
+                <TouchableOpacity
+                  style={styles.fullscreenConfirmBtn}
+                  onPress={() => setIsMapExpanded(false)}
+                  activeOpacity={0.85}>
+                  <Ionicons name="checkmark-circle" size={18} color="#0B0F17" />
+                  <Text style={styles.fullscreenConfirmBtnText}>Confirm Geofence Perimeter</Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          </View>
         </Modal>
       </View>
     </SafeAreaView>
@@ -1157,5 +1307,248 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: -0.2,
+  },
+  expandActionBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#38BDF8',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  expandActionBadgeText: {
+    color: '#0B0F17',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  fullscreenMapContainer: {
+    flex: 1,
+    backgroundColor: '#0B0F17',
+  },
+  fullscreenMapView: {
+    ...StyleSheet.absoluteFill,
+  },
+  fullscreenTopHeaderSafeArea: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  fullscreenTopHeaderBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  fullscreenGlassCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(21, 27, 38, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  fullscreenHeaderCenter: {
+    backgroundColor: 'rgba(21, 27, 38, 0.88)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+    alignItems: 'center',
+  },
+  fullscreenHeaderTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  fullscreenHeaderSubtitle: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  fullscreenDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#38BDF8',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  fullscreenDoneBtnText: {
+    color: '#0B0F17',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  fullscreenBottomControlsSafeArea: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  fullscreenBottomCard: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: 'rgba(21, 27, 38, 0.94)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  fullscreenLocateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fullscreenLocateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0B0F17',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  fullscreenLocateBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fullscreenHelpPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  fullscreenHelpText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  fullscreenRadiusSection: {
+    gap: 6,
+  },
+  fullscreenRadiusLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  fullscreenRadiusHighlight: {
+    color: '#38BDF8',
+    fontWeight: '700',
+  },
+  fullscreenRadiusRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fullscreenRadiusChip: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: '#0B0F17',
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+  },
+  fullscreenRadiusChipActive: {
+    backgroundColor: '#38BDF8',
+    borderColor: '#38BDF8',
+  },
+  fullscreenRadiusChipText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fullscreenRadiusChipTextActive: {
+    color: '#0B0F17',
+  },
+  fullscreenConfirmBtn: {
+    backgroundColor: '#38BDF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  fullscreenConfirmBtnText: {
+    color: '#0B0F17',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  precisionMarker: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  precisionMarkerInner: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#0B0F17',
+    borderWidth: 2,
+    borderColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  precisionMarkerArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderStyle: 'solid',
+    backgroundColor: 'transparent',
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#38BDF8',
+    marginTop: -1,
   },
 });
