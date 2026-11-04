@@ -13,10 +13,9 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocationStore } from '../presentation/stores/location-store';
 import { PartnerStatusCard } from '../presentation/components/PartnerStatusCard';
-import { CallModal } from '../presentation/components/CallModal';
 import { useCallStore } from '../presentation/stores/call-store';
 import { LocationTrackingStateMachine, LocationStateMode } from '../domain/location/location-state-machine';
-import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
+import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { HardwareLocationEngine } from '../infrastructure/location/hardware-location-engine';
 import { BoundaryEvent } from '../domain/places/boundary-event';
 import { BoundaryEventService } from '../application/services/boundary-event-service';
@@ -96,7 +95,7 @@ export default function RadarScreen() {
   }, []);
 
   // Initialize live Supabase blind relay channel
-  const [signalingChannel] = useState(() => new SupabaseSignalingChannel());
+  const [signalingChannel] = useState(() => getSignalingChannel());
 
   useEffect(() => {
     // 1. Initial fallback seeds for simulator preview before GPS fix
@@ -150,16 +149,6 @@ export default function RadarScreen() {
       setPeerViewingMe(isViewing);
     });
 
-    const unsubscribeCall = signalingChannel.onCallSignalReceived((signal) => {
-      if (signal.type === 'offer') {
-        useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
-      } else if (signal.type === 'answer') {
-        useCallStore.getState().acceptCall();
-      } else if (signal.type === 'hangup' || signal.type === 'reject') {
-        useCallStore.getState().endCall();
-      }
-    });
-
     // 5. Start physical hardware GPS & Battery tracking engine
     const locationEngine = new HardwareLocationEngine({
       stateMachine,
@@ -187,7 +176,6 @@ export default function RadarScreen() {
       locationEngine.stop();
       unsubscribeLocation();
       unsubscribeGaze();
-      unsubscribeCall();
       unsubscribeBoundary();
       signalingChannel.leavePairRoom();
     };
@@ -481,26 +469,6 @@ export default function RadarScreen() {
             });
           }}
           onOpenChat={() => router.push('/chat')}
-        />
-
-        {/* WebRTC In-Call HUD Modal */}
-        <CallModal
-          onHangupSignal={(callId) => {
-            signalingChannel.sendCallSignal({
-              type: 'hangup',
-              callId,
-              senderDeviceId: 'local-device',
-              timestamp: Date.now(),
-            });
-          }}
-          onAnswerSignal={(callId) => {
-            signalingChannel.sendCallSignal({
-              type: 'answer',
-              callId,
-              senderDeviceId: 'local-device',
-              timestamp: Date.now(),
-            });
-          }}
         />
       </View>
     </View>

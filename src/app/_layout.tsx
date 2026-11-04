@@ -8,9 +8,12 @@ import * as Linking from 'expo-linking';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
 import { LoginScreen } from '../presentation/screens/LoginScreen';
+import { CallModal } from '../presentation/components/CallModal';
 import { useAuthStore } from '../presentation/stores/auth-store';
+import { useCallStore } from '../presentation/stores/call-store';
 import { getNotificationService } from '../infrastructure/notifications/expo-notification-service';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
+import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { DesignTokens } from '../constants/theme';
 
 // Complete WebBrowser OAuth session if returning from Google / Supabase redirect
@@ -73,6 +76,22 @@ export default function TabLayout() {
         console.log('[TabLayout] Demo user authenticated via deep link');
       }
 
+      // Handle call simulation deep links for verification & testing (ADR 0005)
+      if (url.includes('call=start') || url.includes('call/start')) {
+        const isVideo = url.includes('video=1') || url.includes('video=true');
+        useCallStore.getState().startOutgoingCall('My Partner', isVideo);
+        console.log('[TabLayout] Outgoing call triggered via deep link');
+      }
+      if (url.includes('call=incoming') || url.includes('call/incoming')) {
+        const isVideo = url.includes('video=1') || url.includes('video=true');
+        useCallStore.getState().receiveIncomingCall('call-sim-123', 'My Partner', isVideo);
+        console.log('[TabLayout] Incoming call triggered via deep link');
+      }
+      if (url.includes('call=end') || url.includes('call/end')) {
+        useCallStore.getState().endCall();
+        console.log('[TabLayout] Call ended via deep link');
+      }
+
       // Handle out-of-band Pairing ceremony invitation link (ADR 0006)
       if (url.includes('pair?') || url.includes('pair/invite')) {
         try {
@@ -115,6 +134,28 @@ export default function TabLayout() {
     };
   }, []);
 
+  // Global WebRTC P2P Call Signaling Listener (ADR 0005)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const signaling = getSignalingChannel();
+    signaling.joinPairRoom('pair-primary');
+
+    const callUnsub = signaling.onCallSignalReceived((signal) => {
+      if (signal.type === 'offer') {
+        useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
+      } else if (signal.type === 'answer') {
+        useCallStore.getState().acceptCall();
+      } else if (signal.type === 'hangup' || signal.type === 'reject') {
+        useCallStore.getState().endCall();
+      }
+    });
+
+    return () => {
+      callUnsub();
+    };
+  }, [isAuthenticated]);
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
@@ -125,7 +166,27 @@ export default function TabLayout() {
       ) : !isAuthenticated ? (
         <LoginScreen />
       ) : (
-        <AppTabs />
+        <>
+          <AppTabs />
+          <CallModal
+            onHangupSignal={(callId) => {
+              getSignalingChannel().sendCallSignal({
+                type: 'hangup',
+                callId,
+                senderDeviceId: 'local-device',
+                timestamp: Date.now(),
+              });
+            }}
+            onAnswerSignal={(callId) => {
+              getSignalingChannel().sendCallSignal({
+                type: 'answer',
+                callId,
+                senderDeviceId: 'local-device',
+                timestamp: Date.now(),
+              });
+            }}
+          />
+        </>
       )}
     </ThemeProvider>
   );

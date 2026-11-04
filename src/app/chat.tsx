@@ -13,9 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DesignTokens } from '../constants/theme';
-import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
+import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { CiphertextEnvelope } from '../domain/messaging/ciphertext-envelope';
-import { CallModal } from '../presentation/components/CallModal';
 import { useCallStore } from '../presentation/stores/call-store';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Pair, PairStatus } from '../domain/pairing/pair';
@@ -32,7 +31,7 @@ interface LocalChatMessage {
 
 export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
-  const [signalingChannel] = useState(() => new SupabaseSignalingChannel());
+  const [signalingChannel] = useState(() => getSignalingChannel());
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [sendUseCase, setSendUseCase] = useState<SendMessageUseCase | null>(null);
   const [receiveUseCase, setReceiveUseCase] = useState<ReceiveMessageUseCase | null>(null);
@@ -139,21 +138,9 @@ export default function ChatScreen() {
       }
     });
 
-    const unsubscribeCall = signalingChannel.onCallSignalReceived((signal) => {
-      if (signal.type === 'offer') {
-        useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
-      } else if (signal.type === 'answer') {
-        useCallStore.getState().acceptCall();
-      } else if (signal.type === 'hangup' || signal.type === 'reject') {
-        useCallStore.getState().endCall();
-      }
-    });
-
     return () => {
       mounted = false;
       unsubscribeEnvelope();
-      unsubscribeCall();
-      signalingChannel.leavePairRoom();
     };
   }, [signalingChannel]);
 
@@ -261,7 +248,9 @@ export default function ChatScreen() {
             <View style={styles.headerActionGroup}>
               <TouchableOpacity
                 style={styles.headerActionBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={() => {
+                  console.log('[ChatScreen] Initiating voice call to My Partner');
                   const callId = useCallStore.getState().startOutgoingCall('My Partner', false);
                   signalingChannel.sendCallSignal({
                     type: 'offer',
@@ -276,7 +265,9 @@ export default function ChatScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerActionBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={() => {
+                  console.log('[ChatScreen] Initiating video call to My Partner');
                   const callId = useCallStore.getState().startOutgoingCall('My Partner', true);
                   signalingChannel.sendCallSignal({
                     type: 'offer',
@@ -380,26 +371,6 @@ export default function ChatScreen() {
             />
           </TouchableOpacity>
         </View>
-
-        {/* WebRTC In-Call HUD Modal */}
-        <CallModal
-          onHangupSignal={(callId) => {
-            signalingChannel.sendCallSignal({
-              type: 'hangup',
-              callId,
-              senderDeviceId: 'local-device',
-              timestamp: Date.now(),
-            });
-          }}
-          onAnswerSignal={(callId) => {
-            signalingChannel.sendCallSignal({
-              type: 'answer',
-              callId,
-              senderDeviceId: 'local-device',
-              timestamp: Date.now(),
-            });
-          }}
-        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -429,6 +400,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     flex: 1,
+    flexShrink: 1,
+    marginRight: 8,
   },
   partnerAvatarCircle: {
     width: 42,
@@ -475,6 +448,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    zIndex: 20,
+    elevation: 20,
   },
   headerActionBtn: {
     width: 38,

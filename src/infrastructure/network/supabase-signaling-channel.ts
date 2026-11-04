@@ -209,3 +209,13 @@ export class SupabaseSignalingChannel implements ISignalingPort {
     return () => this.callSignalListeners.delete(callback);
   }
 }
+
+// Global singleton instance for app-wide signaling
+let defaultSignalingChannel: SupabaseSignalingChannel | null = null;
+
+export function getSignalingChannel(): SupabaseSignalingChannel {
+  if (!defaultSignalingChannel) {
+    defaultSignalingChannel = new SupabaseSignalingChannel();
+  }
+  return defaultSignalingChannel;
+}
