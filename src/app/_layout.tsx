@@ -62,6 +62,20 @@ export default function TabLayout() {
         console.log('[TabLayout] User logged out via deep link');
       }
 
+      // Handle dev login deep link for automated verification & UI testing
+      if (url.includes('login=1') || url.includes('dev_login=1')) {
+        const { Account } = await import('../domain/auth/account');
+        const testAccount = new Account({
+          id: 'test-user-id',
+          email: 'test@pairsync.app',
+          fullName: 'Test User',
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+          createdAt: Date.now(),
+        });
+        useAuthStore.getState().setAccount(testAccount);
+        console.log('[TabLayout] Test user logged in via deep link');
+      }
+
       // Handle call simulation deep links for verification & testing (ADR 0005)
       if (url.includes('call=start') || url.includes('call/start')) {
         const isVideo = url.includes('video=1') || url.includes('video=true');
