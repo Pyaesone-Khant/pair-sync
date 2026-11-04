@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -106,6 +106,11 @@ export default function PlacesScreen() {
     });
   }, [places, peerTelemetry.coordinate]);
 
+  const fullscreenMapRef = useRef<MapView | null>(null);
+  const [mapRegionDelta, setMapRegionDelta] = useState({
+    latitudeDelta: 0.008,
+    longitudeDelta: 0.008,
+  });
   const [modalVisible, setModalVisible] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
@@ -142,6 +147,7 @@ export default function PlacesScreen() {
     setSelectedCategoryFilter('All');
     setRadiusInput(100);
     setTargetCoord(myTelemetry.coordinate ?? { latitude: 16.8052, longitude: 96.1561 });
+    setMapRegionDelta({ latitudeDelta: 0.008, longitudeDelta: 0.008 });
     setIsMapExpanded(false);
     setModalVisible(true);
   };
@@ -149,6 +155,15 @@ export default function PlacesScreen() {
   const handleUseCurrentLocation = () => {
     if (myTelemetry.coordinate) {
       setTargetCoord(myTelemetry.coordinate);
+      fullscreenMapRef.current?.animateToRegion(
+        {
+          latitude: myTelemetry.coordinate.latitude,
+          longitude: myTelemetry.coordinate.longitude,
+          latitudeDelta: mapRegionDelta.latitudeDelta,
+          longitudeDelta: mapRegionDelta.longitudeDelta,
+        },
+        500
+      );
     } else {
       Alert.alert('Location Pending', 'GPS coordinate is not yet acquired.');
     }
@@ -162,6 +177,7 @@ export default function PlacesScreen() {
     setSelectedCategoryFilter('All');
     setRadiusInput(place.radiusMeters);
     setTargetCoord({ latitude: place.latitude, longitude: place.longitude });
+    setMapRegionDelta({ latitudeDelta: 0.008, longitudeDelta: 0.008 });
     setIsMapExpanded(false);
     setModalVisible(true);
   };
@@ -401,17 +417,25 @@ export default function PlacesScreen() {
 
               {/* Native Fullscreen Interactive Map */}
               <MapView
+                ref={fullscreenMapRef}
                 style={styles.fullscreenMapView}
                 userInterfaceStyle="dark"
-                region={{
+                initialRegion={{
                   latitude: targetCoord.latitude,
                   longitude: targetCoord.longitude,
-                  latitudeDelta: 0.006,
-                  longitudeDelta: 0.006,
+                  latitudeDelta: mapRegionDelta.latitudeDelta,
+                  longitudeDelta: mapRegionDelta.longitudeDelta,
+                }}
+                onRegionChangeComplete={(region) => {
+                  setMapRegionDelta({
+                    latitudeDelta: region.latitudeDelta,
+                    longitudeDelta: region.longitudeDelta,
+                  });
                 }}
                 onPress={(e) => setTargetCoord(e.nativeEvent.coordinate)}
                 scrollEnabled={true}
                 zoomEnabled={true}
+                pitchEnabled={true}
                 rotateEnabled={true}>
                 <Circle
                   center={targetCoord}
@@ -438,6 +462,69 @@ export default function PlacesScreen() {
                   </View>
                 </Marker>
               </MapView>
+
+              {/* Floating Zoom & Precision Controls (Right Edge) */}
+              <View style={styles.fullscreenZoomControls} pointerEvents="box-none">
+                <TouchableOpacity
+                  style={styles.fullscreenZoomBtn}
+                  onPress={() => {
+                    const newLatDelta = Math.max(0.001, mapRegionDelta.latitudeDelta * 0.5);
+                    const newLngDelta = Math.max(0.001, mapRegionDelta.longitudeDelta * 0.5);
+                    setMapRegionDelta({ latitudeDelta: newLatDelta, longitudeDelta: newLngDelta });
+                    fullscreenMapRef.current?.animateToRegion(
+                      {
+                        latitude: targetCoord.latitude,
+                        longitude: targetCoord.longitude,
+                        latitudeDelta: newLatDelta,
+                        longitudeDelta: newLngDelta,
+                      },
+                      250
+                    );
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Zoom in map">
+                  <Ionicons name="add" size={24} color="#F8FAFC" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.fullscreenZoomBtn}
+                  onPress={() => {
+                    const newLatDelta = Math.min(2.0, mapRegionDelta.latitudeDelta * 2.0);
+                    const newLngDelta = Math.min(2.0, mapRegionDelta.longitudeDelta * 2.0);
+                    setMapRegionDelta({ latitudeDelta: newLatDelta, longitudeDelta: newLngDelta });
+                    fullscreenMapRef.current?.animateToRegion(
+                      {
+                        latitude: targetCoord.latitude,
+                        longitude: targetCoord.longitude,
+                        latitudeDelta: newLatDelta,
+                        longitudeDelta: newLngDelta,
+                      },
+                      250
+                    );
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Zoom out map">
+                  <Ionicons name="remove" size={24} color="#F8FAFC" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.fullscreenZoomBtn}
+                  onPress={() => {
+                    fullscreenMapRef.current?.animateToRegion(
+                      {
+                        latitude: targetCoord.latitude,
+                        longitude: targetCoord.longitude,
+                        latitudeDelta: mapRegionDelta.latitudeDelta,
+                        longitudeDelta: mapRegionDelta.longitudeDelta,
+                      },
+                      300
+                    );
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Center on selected pin">
+                  <Ionicons name="locate-outline" size={20} color="#38BDF8" />
+                </TouchableOpacity>
+              </View>
 
               {/* Floating Top Navigation Header */}
               <SafeAreaView style={styles.fullscreenTopHeaderSafeArea} pointerEvents="box-none">
@@ -1339,6 +1426,28 @@ const styles = StyleSheet.create({
   },
   fullscreenMapView: {
     ...StyleSheet.absoluteFill,
+  },
+  fullscreenZoomControls: {
+    position: 'absolute',
+    right: 16,
+    top: 130,
+    gap: 10,
+    zIndex: 10,
+  },
+  fullscreenZoomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(21, 27, 38, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
   },
   fullscreenTopHeaderSafeArea: {
     position: 'absolute',
