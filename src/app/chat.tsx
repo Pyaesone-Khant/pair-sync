@@ -17,6 +17,10 @@ import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-sig
 import { CiphertextEnvelope } from '../domain/messaging/ciphertext-envelope';
 import { CallModal } from '../presentation/components/CallModal';
 import { useCallStore } from '../presentation/stores/call-store';
+import { getDatabaseClient } from '../infrastructure/database/database-client';
+import { Pair, PairStatus } from '../domain/pairing/pair';
+import { SendMessageUseCase } from '../application/use-cases/send-message.usecase';
+import { ReceiveMessageUseCase } from '../application/use-cases/receive-message.usecase';
 
 interface LocalChatMessage {
   id: string;
@@ -29,31 +33,89 @@ interface LocalChatMessage {
 export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [signalingChannel] = useState(() => new SupabaseSignalingChannel());
-  const [messages, setMessages] = useState<LocalChatMessage[]>([
-    {
-      id: '1',
-      sender: 'partner',
-      text: 'Hey! I just left the office.',
-      timestamp: '14:20',
-      isEncrypted: true,
-    },
-    {
-      id: '2',
-      sender: 'me',
-      text: 'Great, I see on the map you are ~1.2 km away. See you soon!',
-      timestamp: '14:22',
-      isEncrypted: true,
-    },
-  ]);
+  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
+  const [sendUseCase, setSendUseCase] = useState<SendMessageUseCase | null>(null);
+  const [receiveUseCase, setReceiveUseCase] = useState<ReceiveMessageUseCase | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
+    async function initChat() {
+      const { pairRepo, messageRepo } = getDatabaseClient().getRepositories();
+
+      // Ensure an active pair is loaded or initialized
+      let activePair = await pairRepo.getActivePair();
+      if (!activePair) {
+        activePair = new Pair({
+          id: 'pair-primary',
+          localDeviceId: 'device-local-user',
+          peerDeviceId: 'device-remote-peer',
+          peerPublicKey: 'ed25519-public-key-peer',
+          status: PairStatus.Active,
+        });
+        await pairRepo.savePair(activePair);
+      }
+
+      const sender = new SendMessageUseCase(pairRepo, messageRepo, signalingChannel);
+      const receiver = new ReceiveMessageUseCase(pairRepo, messageRepo);
+
+      if (!mounted) return;
+      setSendUseCase(sender);
+      setReceiveUseCase(receiver);
+
+      // Load previous conversation from local SQLite store
+      const storedEnvelopes = await messageRepo.getRecentEnvelopes(50);
+      if (storedEnvelopes.length > 0) {
+        const mappedMessages: LocalChatMessage[] = [];
+        for (const env of storedEnvelopes) {
+          const isMe = env.senderDeviceId === activePair.localDeviceId;
+          let plaintext = env.ciphertext;
+          if (plaintext.startsWith('plain:')) {
+            plaintext = plaintext.replace('plain:', '');
+          }
+          mappedMessages.push({
+            id: env.id,
+            sender: isMe ? 'me' : 'partner',
+            text: plaintext,
+            timestamp: new Date(env.timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            isEncrypted: true,
+          });
+        }
+        setMessages(mappedMessages);
+      } else {
+        // Initial welcoming conversation seeds
+        const initialSeeds: LocalChatMessage[] = [
+          {
+            id: 'init-1',
+            sender: 'partner',
+            text: 'Hey! I just left the office.',
+            timestamp: '14:20',
+            isEncrypted: true,
+          },
+          {
+            id: 'init-2',
+            sender: 'me',
+            text: 'Great, I see on the map you are ~1.2 km away. See you soon!',
+            timestamp: '14:22',
+            isEncrypted: true,
+          },
+        ];
+        setMessages(initialSeeds);
+      }
+    }
+
+    initChat();
+
     signalingChannel.joinPairRoom('pair-primary');
 
-    const unsubscribeEnvelope = signalingChannel.onEnvelopeReceived((envelope) => {
-      // Decode incoming message envelope from peer
-      const incomingText = envelope.ciphertext.startsWith('plain:')
-        ? envelope.ciphertext.replace('plain:', '')
-        : `[Encrypted Ratchet Payload: ${envelope.ciphertext.slice(0, 12)}...]`;
+    const unsubscribeEnvelope = signalingChannel.onEnvelopeReceived(async (envelope) => {
+      let incomingText = envelope.ciphertext;
+      if (incomingText.startsWith('plain:')) {
+        incomingText = incomingText.replace('plain:', '');
+      }
 
       const incomingMessage: LocalChatMessage = {
         id: envelope.id,
@@ -67,6 +129,14 @@ export default function ChatScreen() {
       };
 
       setMessages((prev) => [...prev, incomingMessage]);
+
+      // Persist to local SQLite store
+      try {
+        const { messageRepo } = getDatabaseClient().getRepositories();
+        await messageRepo.saveEnvelope(envelope, 'incoming');
+      } catch (err) {
+        console.warn('[ChatScreen] Failed to store incoming envelope:', err);
+      }
     });
 
     const unsubscribeCall = signalingChannel.onCallSignalReceived((signal) => {
@@ -80,6 +150,7 @@ export default function ChatScreen() {
     });
 
     return () => {
+      mounted = false;
       unsubscribeEnvelope();
       unsubscribeCall();
       signalingChannel.leavePairRoom();
@@ -104,12 +175,28 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, newMessage]);
     setInputText('');
 
-    // Broadcast through blind relay to remote partner device
-    try {
+    if (sendUseCase) {
+      try {
+        await sendUseCase.execute(textToSend);
+      } catch {
+        // Fallback broadcast
+        const envelope = new CiphertextEnvelope({
+          id: newId,
+          senderDeviceId: 'device-local-user',
+          recipientDeviceId: 'device-remote-peer',
+          iv: '123456789012',
+          ciphertext: `plain:${textToSend}`,
+          sequenceNumber: messages.length + 1,
+          ratchetPublicKey: 'pub-key-ratchet',
+          timestamp: Date.now(),
+        });
+        await signalingChannel.sendEnvelope(envelope);
+      }
+    } else {
       const envelope = new CiphertextEnvelope({
         id: newId,
-        senderDeviceId: 'dev-local',
-        recipientDeviceId: 'dev-peer',
+        senderDeviceId: 'device-local-user',
+        recipientDeviceId: 'device-remote-peer',
         iv: '123456789012',
         ciphertext: `plain:${textToSend}`,
         sequenceNumber: messages.length + 1,
@@ -117,8 +204,6 @@ export default function ChatScreen() {
         timestamp: Date.now(),
       });
       await signalingChannel.sendEnvelope(envelope);
-    } catch (err) {
-      console.warn('[ChatScreen] Failed to broadcast envelope:', err);
     }
   };
 
@@ -137,8 +222,8 @@ export default function ChatScreen() {
     try {
       const envelope = new CiphertextEnvelope({
         id: newId,
-        senderDeviceId: 'dev-local',
-        recipientDeviceId: 'dev-peer',
+        senderDeviceId: 'device-local-user',
+        recipientDeviceId: 'device-remote-peer',
         iv: '123456789012',
         ciphertext: `plain:${pingText}`,
         sequenceNumber: messages.length + 1,
@@ -147,7 +232,7 @@ export default function ChatScreen() {
       });
       await signalingChannel.sendEnvelope(envelope);
     } catch (err) {
-      console.warn('[ChatScreen] Failed to broadcast location ping envelope:', err);
+      console.warn('[ChatScreen] Failed to broadcast location ping:', err);
     }
   };
 
