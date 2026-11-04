@@ -105,7 +105,7 @@ export class SupabaseAuthService implements IAuthPort {
     return currentAccount;
   }
 
-  private async handleAuthRedirectUrl(url: string): Promise<void> {
+  public async handleAuthRedirectUrl(url: string): Promise<void> {
     try {
       // Extract tokens from fragment (#access_token=...&refresh_token=...)
       if (url.includes('#')) {

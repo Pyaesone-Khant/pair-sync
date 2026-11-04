@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -42,6 +43,21 @@ export default function PairingScreen() {
 
     initKeysAndPayload();
   }, []);
+
+  const handleShareInviteLink = async () => {
+    try {
+      const inviteUrl = pairingPayload
+        ? `pairsync://pair?deviceId=${encodeURIComponent(pairingPayload.deviceId)}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${pairingPayload.timestamp}`
+        : 'pairsync://pair/invite';
+      await Share.share({
+        title: 'PairSync Secure Peer Invite',
+        message: `Join my private 1-to-1 sync on PairSync: ${inviteUrl}`,
+        url: inviteUrl,
+      });
+    } catch (err) {
+      console.warn('[PairingScreen] Share invite failed:', err);
+    }
+  };
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (scanned || !pairUseCase) return;
@@ -205,9 +221,9 @@ export default function PairingScreen() {
               {/* Remote Invite Button */}
               <TouchableOpacity
                 style={styles.copyLinkBtn}
-                onPress={() => Alert.alert('Invite Link Copied', 'Encrypted invite deep link copied to clipboard')}>
-                <Ionicons name="link-outline" size={16} color="#0B0F17" />
-                <Text style={styles.copyLinkText}>Copy Secure Remote Invite Link</Text>
+                onPress={handleShareInviteLink}>
+                <Ionicons name="share-social-outline" size={16} color="#0B0F17" />
+                <Text style={styles.copyLinkText}>Share Secure Peer Invite Link</Text>
               </TouchableOpacity>
             </View>
           ) : (

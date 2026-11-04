@@ -50,8 +50,8 @@ export default function RadarScreen() {
   const updatePeerTelemetry = useLocationStore((state) => state.updatePeerTelemetry);
   const setPeerViewingMe = useLocationStore((state) => state.setPeerViewingMe);
 
-  // Demo Places rendered as live geofence circles on the map
-  const [places] = useState<DemoPlace[]>([
+  // Live Places loaded from SQLite rendered as geofence circles on the map
+  const [places, setPlaces] = useState<DemoPlace[]>([
     {
       id: 'home',
       name: 'Home',
@@ -67,6 +67,33 @@ export default function RadarScreen() {
       radiusMeters: 180,
     },
   ]);
+
+  // Load places dynamically from local SQLite database
+  useEffect(() => {
+    let mounted = true;
+    async function syncPlaces() {
+      try {
+        const stored = await getDatabaseClient().getRepositories().placeRepo.getAllPlaces();
+        if (mounted && stored.length > 0) {
+          setPlaces(
+            stored.map((p) => ({
+              id: p.id,
+              name: p.name,
+              latitude: p.coordinate.latitude,
+              longitude: p.coordinate.longitude,
+              radiusMeters: p.radiusMeters,
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('[RadarScreen] Failed to load places from SQLite:', err);
+      }
+    }
+    syncPlaces();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Initialize live Supabase blind relay channel
   const [signalingChannel] = useState(() => new SupabaseSignalingChannel());
