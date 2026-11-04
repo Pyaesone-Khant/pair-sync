@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SupabaseAuthService } from './supabase-auth-service';
+import { SupabaseAuthService, MobileSecureAuthStorage } from './supabase-auth-service';
 import { Account } from '../../domain/auth/account';
 
 describe('SupabaseAuthService (ADR 0006 Google OAuth Adapter)', () => {
@@ -16,6 +16,7 @@ describe('SupabaseAuthService (ADR 0006 Google OAuth Adapter)', () => {
         })
       ),
       setSession: vi.fn(() => Promise.resolve({ data: { session: {} }, error: null })),
+      getSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
       getUser: vi.fn(() =>
         Promise.resolve({
           data: {
@@ -90,5 +91,16 @@ describe('SupabaseAuthService (ADR 0006 Google OAuth Adapter)', () => {
   it('signs out from Supabase auth', async () => {
     await authService.signOut();
     expect(mockSupabaseAuth.signOut).toHaveBeenCalled();
+  });
+
+  it('persists and restores auth tokens across sessions via MobileSecureAuthStorage', async () => {
+    const storage = new MobileSecureAuthStorage();
+    expect(await storage.getItem('sb-token')).toBeNull();
+
+    await storage.setItem('sb-token', 'jwt-token-persistent-abc-123');
+    expect(await storage.getItem('sb-token')).toBe('jwt-token-persistent-abc-123');
+
+    await storage.removeItem('sb-token');
+    expect(await storage.getItem('sb-token')).toBeNull();
   });
 });

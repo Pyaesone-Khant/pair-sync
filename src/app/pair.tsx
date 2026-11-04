@@ -8,12 +8,11 @@ import {
   Alert,
   ScrollView,
   Share,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import QRCode from 'qrcode';
+import { QRCodeDisplay } from '../presentation/components/QRCodeDisplay';
 import {
   getDeviceKeyManager,
   getOrCreateLocalDeviceId,
@@ -25,7 +24,6 @@ import { Pair } from '../domain/pairing/pair';
 export default function PairingScreen() {
   const [activeTab, setActiveTab] = useState<'myCode' | 'scanner'>('myCode');
   const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(null);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [safetyNumber, setSafetyNumber] = useState<string>('');
   const [activePair, setActivePair] = useState<Pair | null>(null);
   const [isPaired, setIsPaired] = useState(false);
@@ -69,24 +67,6 @@ export default function PairingScreen() {
           const d3 = String(1000 + ((hash >> 8) % 9000));
           const d4 = String(1000 + ((hash >> 12) % 9000));
           setSafetyNumber(`${d1} • ${d2} • ${d3} • ${d4}`);
-        }
-
-        // Generate high-resolution scannable QR code PNG base64 data URL
-        const inviteUrl = `pairsync://pair?deviceId=${encodeURIComponent(
-          payload.deviceId
-        )}&publicKey=${encodeURIComponent(payload.publicKey)}&timestamp=${payload.timestamp}`;
-
-        const dataUrl = await QRCode.toDataURL(inviteUrl, {
-          width: 400,
-          margin: 1,
-          color: {
-            dark: '#0B0F17',
-            light: '#FFFFFF',
-          },
-        });
-
-        if (mounted) {
-          setQrCodeDataUrl(dataUrl);
         }
       } catch (err) {
         console.warn('[PairingScreen] Error initializing cryptographic keys:', err);
@@ -174,6 +154,14 @@ export default function PairingScreen() {
     );
   };
 
+  const inviteUrl = pairingPayload
+    ? `pairsync://pair?deviceId=${encodeURIComponent(
+        pairingPayload.deviceId
+      )}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${
+        pairingPayload.timestamp
+      }`
+    : '';
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -251,12 +239,8 @@ export default function PairingScreen() {
               {/* Real High-Resolution Scannable QR Box */}
               <View style={styles.qrCard}>
                 <View style={styles.qrWhiteTile}>
-                  {qrCodeDataUrl ? (
-                    <Image
-                      source={{ uri: qrCodeDataUrl }}
-                      style={styles.qrImage}
-                      resizeMode="contain"
-                    />
+                  {inviteUrl ? (
+                    <QRCodeDisplay value={inviteUrl} size={196} />
                   ) : (
                     <ActivityIndicator size="large" color="#38BDF8" />
                   )}

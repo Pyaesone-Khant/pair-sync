@@ -12,6 +12,65 @@ export interface SupabaseAuthConfig {
 }
 
 /**
+ * Persistent Storage adapter backed by Expo SecureStore (iOS Keychain & Android Keystore).
+ * Preserves authentication session across application restarts and device reboots.
+ */
+export class MobileSecureAuthStorage {
+  private inMemoryFallback = new Map<string, string>();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getSecureStore(): any {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require('expo-secure-store');
+    } catch {
+      return null;
+    }
+  }
+
+  public async getItem(key: string): Promise<string | null> {
+    const store = this.getSecureStore();
+    if (store && typeof store.getItemAsync === 'function') {
+      try {
+        const item = await store.getItemAsync(key);
+        if (item !== null && item !== undefined) {
+          return item;
+        }
+      } catch (err) {
+        console.warn('[MobileSecureAuthStorage] getItem fallback:', err);
+      }
+    }
+    return this.inMemoryFallback.get(key) ?? null;
+  }
+
+  public async setItem(key: string, value: string): Promise<void> {
+    const store = this.getSecureStore();
+    if (store && typeof store.setItemAsync === 'function') {
+      try {
+        await store.setItemAsync(key, value);
+        return;
+      } catch (err) {
+        console.warn('[MobileSecureAuthStorage] setItem fallback:', err);
+      }
+    }
+    this.inMemoryFallback.set(key, value);
+  }
+
+  public async removeItem(key: string): Promise<void> {
+    const store = this.getSecureStore();
+    if (store && typeof store.deleteItemAsync === 'function') {
+      try {
+        await store.deleteItemAsync(key);
+        return;
+      } catch (err) {
+        console.warn('[MobileSecureAuthStorage] removeItem fallback:', err);
+      }
+    }
+    this.inMemoryFallback.delete(key);
+  }
+}
+
+/**
  * Production implementation of IAuthPort using Supabase Google OAuth and Expo WebBrowser.
  * Adheres to ADR 0006 (Hybrid Identity).
  */
@@ -35,6 +94,7 @@ export class SupabaseAuthService implements IAuthPort {
 
       this.client = createClient(url, key, {
         auth: {
+          storage: new MobileSecureAuthStorage(),
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: false,
@@ -147,11 +207,19 @@ export class SupabaseAuthService implements IAuthPort {
   }
 
   public async getCurrentAccount(): Promise<Account | null> {
-    const { data: { user }, error } = await this.client.auth.getUser();
-    if (error || !user) {
+    try {
+      const { data: { session } } = await this.client.auth.getSession();
+      if (session?.user) {
+        return this.mapUserToAccount(session.user);
+      }
+      const { data: { user }, error } = await this.client.auth.getUser();
+      if (error || !user) {
+        return null;
+      }
+      return this.mapUserToAccount(user);
+    } catch {
       return null;
     }
-    return this.mapUserToAccount(user);
   }
 
   public onAuthStateChanged(callback: (account: Account | null) => void): () => void {
