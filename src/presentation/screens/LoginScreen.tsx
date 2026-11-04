@@ -8,6 +8,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
@@ -57,10 +58,11 @@ export const LoginScreen: React.FC = () => {
         {/* Top Hero Brand Section */}
         <View style={styles.heroSection}>
           <View style={styles.iconContainer}>
-            <View style={styles.pulseRing} />
-            <View style={styles.brandIconTile}>
-              <Ionicons name="lock-closed" size={32} color={DesignTokens.colors.accentCyan} />
-            </View>
+            <Image
+              source={require('../../../assets/images/icon.png')}
+              style={styles.brandLogo}
+              resizeMode="cover"
+            />
           </View>
 
           <Text style={styles.brandTitle}>PairSync</Text>
@@ -70,29 +72,23 @@ export const LoginScreen: React.FC = () => {
         <View style={styles.featureCardsContainer}>
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="navigate" size={16} color={DesignTokens.colors.accentEmerald} />
+              <Ionicons name="navigate" size={19} color={DesignTokens.colors.accentEmerald} />
             </View>
-            <View style={styles.featureTextCol}>
-              <Text style={styles.featureTitle}>Live Radar & Presence</Text>
-            </View>
+            <Text style={styles.featureTitle}>Live Radar & Presence</Text>
           </View>
 
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="shield-checkmark" size={16} color={DesignTokens.colors.accentCyan} />
+              <Ionicons name="shield-checkmark" size={19} color={DesignTokens.colors.accentCyan} />
             </View>
-            <View style={styles.featureTextCol}>
-              <Text style={styles.featureTitle}>Safe Places Geofencing</Text>
-            </View>
+            <Text style={styles.featureTitle}>Safe Places Geofencing</Text>
           </View>
 
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="chatbubbles" size={16} color="#F43F5E" />
+              <Ionicons name="chatbubbles" size={19} color="#F43F5E" />
             </View>
-            <View style={styles.featureTextCol}>
-              <Text style={styles.featureTitle}>1-to-1 Calls & Chat</Text>
-            </View>
+            <Text style={styles.featureTitle}>1-to-1 Calls & Chat</Text>
           </View>
         </View>
 
@@ -151,90 +147,60 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: 'center',
-    paddingTop: 24,
+    paddingTop: 16,
   },
   iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    width: 88,
-    height: 88,
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-  },
-  brandIconTile: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#151B26',
-    borderWidth: 1.5,
-    borderColor: '#232B3A',
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 16,
     shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  brandLogo: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
   },
   brandTitle: {
     fontSize: 32,
     fontWeight: '800',
     color: '#F8FAFC',
     letterSpacing: -0.6,
-    marginBottom: 6,
-  },
-  brandTagline: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: DesignTokens.colors.accentCyan,
-    letterSpacing: 0.2,
-    marginBottom: 14,
-  },
-  brandDescription: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: '#94A3B8',
-    textAlign: 'center',
-    paddingHorizontal: 16,
   },
   featureCardsContainer: {
-    backgroundColor: '#121824',
-    borderRadius: 20,
-    padding: 18,
+    backgroundColor: '#151B26',
+    borderRadius: 24,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#1E293B',
-    gap: 16,
+    borderColor: '#232B3A',
+    gap: 18,
     marginVertical: 12,
   },
   featureRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
+    alignItems: 'center',
+    gap: 16,
   },
   featureIconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 13,
     backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
-  },
-  featureTextCol: {
-    flex: 1,
   },
   featureTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#F1F5F9',
-    marginBottom: 2,
+    color: '#F8FAFC',
+    letterSpacing: -0.2,
   },
   featureSubtitle: {
     fontSize: 12,
