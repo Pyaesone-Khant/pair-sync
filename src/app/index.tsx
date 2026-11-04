@@ -22,6 +22,7 @@ import { BoundaryEvent } from '../domain/places/boundary-event';
 import { BoundaryEventService } from '../application/services/boundary-event-service';
 import { BoundaryEventBanner } from '../presentation/components/BoundaryEventBanner';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
+import { useInterpolatedCoordinate } from '../presentation/hooks/useInterpolatedCoordinate';
 
 const { width, height } = Dimensions.get('window');
 
@@ -243,6 +244,12 @@ export default function RadarScreen() {
   const myCoord = myTelemetry.coordinate ?? { latitude: 37.7749, longitude: -122.4194 };
   const peerCoord = peerTelemetry.coordinate ?? { latitude: 37.7833, longitude: -122.4167 };
 
+  // Smooth 60fps algorithmic coordinate interpolation (ADR 0007)
+  const { coordinate: animatedPeerCoord, bearing: peerBearing } = useInterpolatedCoordinate(
+    peerTelemetry.coordinate,
+    1200
+  );
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -280,8 +287,11 @@ export default function RadarScreen() {
           </View>
         </Marker>
 
-        {/* Partner Marker ("Partner") */}
-        <Marker coordinate={peerCoord} title="Partner" anchor={{ x: 0.5, y: 0.8 }}>
+        {/* Partner Marker ("Partner") with Coordinate Interpolation */}
+        <Marker
+          coordinate={animatedPeerCoord ?? peerCoord}
+          title="Partner"
+          anchor={{ x: 0.5, y: 0.8 }}>
           <View style={styles.peerMarkerContainer}>
             <View style={styles.peerCalloutBubble}>
               <Ionicons
