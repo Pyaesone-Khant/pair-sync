@@ -51,6 +51,7 @@ describe('Local-First SQLite Repositories (ADR 0004 & ADR 0009)', () => {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         radius_meters REAL NOT NULL,
+        icon TEXT DEFAULT 'location',
         created_at INTEGER NOT NULL
       );
     `);
@@ -186,6 +187,7 @@ describe('Local-First SQLite Repositories (ADR 0004 & ADR 0009)', () => {
         name: 'Home',
         coordinate: { latitude: 37.7749, longitude: -122.4194 },
         radiusMeters: 80,
+        icon: 'home',
       });
 
       const office = new Place({
@@ -193,6 +195,7 @@ describe('Local-First SQLite Repositories (ADR 0004 & ADR 0009)', () => {
         name: 'Office',
         coordinate: { latitude: 37.7899, longitude: -122.4014 },
         radiusMeters: 120,
+        icon: 'briefcase',
       });
 
       await placeRepo.savePlace(home);
@@ -206,6 +209,7 @@ describe('Local-First SQLite Repositories (ADR 0004 & ADR 0009)', () => {
       const fetched = await placeRepo.getPlaceById('place-home');
       expect(fetched?.name).toBe('Home');
       expect(fetched?.radiusMeters).toBe(80);
+      expect(fetched?.icon).toBe('home');
 
       await placeRepo.deletePlace('place-home');
       const remaining = await placeRepo.getAllPlaces();

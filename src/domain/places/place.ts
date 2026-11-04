@@ -8,6 +8,7 @@ export interface PlaceProperties {
   name: string;
   coordinate: GeographicCoordinate;
   radiusMeters: number;
+  icon?: string;
 }
 
 /**
@@ -19,6 +20,7 @@ export class Place {
   public readonly name: string;
   public readonly coordinate: GeographicCoordinate;
   public readonly radiusMeters: number;
+  public readonly icon: string;
 
   constructor(props: PlaceProperties) {
     if (props.radiusMeters <= 0) {
@@ -29,6 +31,7 @@ export class Place {
     this.name = props.name.trim();
     this.coordinate = props.coordinate;
     this.radiusMeters = props.radiusMeters;
+    this.icon = props.icon || 'location';
   }
 
   /**

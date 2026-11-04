@@ -238,6 +238,7 @@ export class SqlitePlaceRepository implements IPlaceRepository {
       latitude: number;
       longitude: number;
       radius_meters: number;
+      icon?: string;
     }
 
     const rows = this.db.all<PlaceRow>('SELECT * FROM places ORDER BY name ASC');
@@ -248,6 +249,7 @@ export class SqlitePlaceRepository implements IPlaceRepository {
           name: r.name,
           coordinate: { latitude: r.latitude, longitude: r.longitude },
           radiusMeters: r.radius_meters,
+          icon: r.icon || 'location',
         })
     );
   }
@@ -259,6 +261,7 @@ export class SqlitePlaceRepository implements IPlaceRepository {
       latitude: number;
       longitude: number;
       radius_meters: number;
+      icon?: string;
     }
 
     const row = this.db.get<PlaceRow>('SELECT * FROM places WHERE id = ?', [id]);
@@ -269,19 +272,21 @@ export class SqlitePlaceRepository implements IPlaceRepository {
       name: row.name,
       coordinate: { latitude: row.latitude, longitude: row.longitude },
       radiusMeters: row.radius_meters,
+      icon: row.icon || 'location',
     });
   }
 
   public async savePlace(place: Place): Promise<void> {
     this.db.run(
-      `INSERT OR REPLACE INTO places (id, name, latitude, longitude, radius_meters, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO places (id, name, latitude, longitude, radius_meters, icon, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         place.id,
         place.name,
         place.coordinate.latitude,
         place.coordinate.longitude,
         place.radiusMeters,
+        place.icon,
         Date.now(),
       ]
     );

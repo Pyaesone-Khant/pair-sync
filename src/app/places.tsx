@@ -18,11 +18,17 @@ import MapView, { Marker, Circle } from 'react-native-maps';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Place } from '../domain/places/place';
 import { useLocationStore } from '../presentation/stores/location-store';
+import {
+  PLACE_ICONS,
+  PLACE_ICON_CATEGORIES,
+  PlaceCategory,
+} from '../constants/place-icons';
 
 export interface SafePlace {
   id: string;
   name: string;
   category: 'home' | 'work' | 'gym' | 'other';
+  icon?: string;
   radiusMeters: number;
   latitude: number;
   longitude: number;
@@ -57,6 +63,7 @@ export default function PlacesScreen() {
               id: p.id,
               name: p.name,
               category: cat,
+              icon: p.icon || (cat === 'home' ? 'home' : cat === 'work' ? 'briefcase' : cat === 'gym' ? 'barbell' : 'location'),
               radiusMeters: p.radiusMeters,
               latitude: p.coordinate.latitude,
               longitude: p.coordinate.longitude,
@@ -86,6 +93,7 @@ export default function PlacesScreen() {
           name: p.name,
           coordinate: { latitude: p.latitude, longitude: p.longitude },
           radiusMeters: p.radiusMeters,
+          icon: p.icon,
         });
         isPresent = placeEntity.containsCoordinate(peerTelemetry.coordinate);
       }
@@ -101,18 +109,37 @@ export default function PlacesScreen() {
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
   const [categoryInput, setCategoryInput] = useState<'home' | 'work' | 'gym' | 'other'>('home');
+  const [selectedIcon, setSelectedIcon] = useState<string>('home');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<PlaceCategory>('All');
   const [radiusInput, setRadiusInput] = useState(100);
   const [targetCoord, setTargetCoord] = useState<{ latitude: number; longitude: number }>({
-    latitude: 37.7749,
-    longitude: -122.4194,
+    latitude: 16.8052,
+    longitude: 96.1561,
   });
+
+  const filteredIcons = useMemo(() => {
+    if (selectedCategoryFilter === 'All') {
+      return PLACE_ICONS;
+    }
+    return PLACE_ICONS.filter((item) => item.category === selectedCategoryFilter);
+  }, [selectedCategoryFilter]);
+
+  const currentIconMetadata = useMemo(() => {
+    return PLACE_ICONS.find((i) => i.name === selectedIcon) || {
+      name: selectedIcon,
+      label: selectedIcon,
+      category: 'Custom',
+    };
+  }, [selectedIcon]);
 
   const openAddModal = () => {
     setEditingPlaceId(null);
     setNameInput('');
     setCategoryInput('home');
+    setSelectedIcon('home');
+    setSelectedCategoryFilter('All');
     setRadiusInput(100);
-    setTargetCoord(myTelemetry.coordinate ?? { latitude: 37.7749, longitude: -122.4194 });
+    setTargetCoord(myTelemetry.coordinate ?? { latitude: 16.8052, longitude: 96.1561 });
     setModalVisible(true);
   };
 
@@ -128,6 +155,8 @@ export default function PlacesScreen() {
     setEditingPlaceId(place.id);
     setNameInput(place.name);
     setCategoryInput(place.category);
+    setSelectedIcon(place.icon || 'location');
+    setSelectedCategoryFilter('All');
     setRadiusInput(place.radiusMeters);
     setTargetCoord({ latitude: place.latitude, longitude: place.longitude });
     setModalVisible(true);
@@ -145,6 +174,7 @@ export default function PlacesScreen() {
       name: nameInput.trim(),
       coordinate: { latitude: targetCoord.latitude, longitude: targetCoord.longitude },
       radiusMeters: radiusInput,
+      icon: selectedIcon,
     });
 
     try {
@@ -161,6 +191,7 @@ export default function PlacesScreen() {
                 ...p,
                 name: nameInput.trim(),
                 category: categoryInput,
+                icon: selectedIcon,
                 radiusMeters: radiusInput,
                 latitude: targetCoord.latitude,
                 longitude: targetCoord.longitude,
@@ -173,6 +204,7 @@ export default function PlacesScreen() {
         id: placeId,
         name: nameInput.trim(),
         category: categoryInput,
+        icon: selectedIcon,
         radiusMeters: radiusInput,
         latitude: targetCoord.latitude,
         longitude: targetCoord.longitude,
@@ -244,15 +276,7 @@ export default function PlacesScreen() {
                       item.partnerPresent ? styles.iconCircleActive : styles.iconCircleInactive,
                     ]}>
                     <Ionicons
-                      name={
-                        item.category === 'home'
-                          ? 'home'
-                          : item.category === 'work'
-                          ? 'briefcase'
-                          : item.category === 'gym'
-                          ? 'barbell'
-                          : 'location'
-                      }
+                      name={(item.icon as keyof typeof Ionicons.glyphMap) || 'location'}
                       size={20}
                       color={item.partnerPresent ? '#10B981' : '#38BDF8'}
                     />
@@ -444,36 +468,85 @@ export default function PlacesScreen() {
                   )}
                 </View>
 
-                {/* Category Selector */}
-                <Text style={styles.inputLabel}>Category Icon</Text>
-                <View style={styles.categoryRow}>
-                  {([
-                    { key: 'home', label: 'Home', icon: 'home-outline' },
-                    { key: 'work', label: 'Work', icon: 'briefcase-outline' },
-                    { key: 'gym', label: 'Gym', icon: 'barbell-outline' },
-                    { key: 'other', label: 'Other', icon: 'location-outline' },
-                  ] as const).map((cat) => (
-                    <TouchableOpacity
-                      key={cat.key}
-                      style={[
-                        styles.categoryBtn,
-                        categoryInput === cat.key && styles.categoryBtnActive,
-                      ]}
-                      onPress={() => setCategoryInput(cat.key)}>
-                      <Ionicons
-                        name={cat.icon}
-                        size={16}
-                        color={categoryInput === cat.key ? '#38BDF8' : '#94A3B8'}
-                      />
-                      <Text
+                {/* Safe Places Icon Hub */}
+                <View style={styles.iconHubHeaderRow}>
+                  <Text style={styles.inputLabel}>Icon Hub ({PLACE_ICONS.length} Icons)</Text>
+                  <View style={styles.selectedIconPreviewPill}>
+                    <Ionicons
+                      name={(selectedIcon as keyof typeof Ionicons.glyphMap) || 'location'}
+                      size={15}
+                      color="#38BDF8"
+                    />
+                    <Text style={styles.selectedIconPreviewText}>{currentIconMetadata.label}</Text>
+                  </View>
+                </View>
+
+                {/* Category Filter Tabs */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryFilterScroll}>
+                  {PLACE_ICON_CATEGORIES.map((cat) => {
+                    const isActive = selectedCategoryFilter === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
                         style={[
-                          styles.categoryBtnText,
-                          categoryInput === cat.key && styles.categoryBtnTextActive,
-                        ]}>
-                        {cat.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                          styles.categoryFilterChip,
+                          isActive && styles.categoryFilterChipActive,
+                        ]}
+                        onPress={() => setSelectedCategoryFilter(cat)}>
+                        <Text
+                          style={[
+                            styles.categoryFilterChipText,
+                            isActive && styles.categoryFilterChipTextActive,
+                          ]}>
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Icon Grid Hub */}
+                <View style={styles.iconGridContainer}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    style={styles.iconGridScrollView}
+                    contentContainerStyle={styles.iconGridContent}>
+                    {filteredIcons.map((iconItem) => {
+                      const isSelected = selectedIcon === iconItem.name;
+                      return (
+                        <TouchableOpacity
+                          key={iconItem.name}
+                          style={[
+                            styles.iconGridTile,
+                            isSelected && styles.iconGridTileSelected,
+                          ]}
+                          onPress={() => {
+                            setSelectedIcon(iconItem.name);
+                            if (iconItem.category === 'Living') setCategoryInput('home');
+                            else if (iconItem.category === 'Work') setCategoryInput('work');
+                            else if (iconItem.category === 'Health') setCategoryInput('gym');
+                            else setCategoryInput('other');
+                          }}>
+                          <Ionicons
+                            name={iconItem.name as keyof typeof Ionicons.glyphMap}
+                            size={20}
+                            color={isSelected ? '#38BDF8' : '#94A3B8'}
+                          />
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.iconTileLabel,
+                              isSelected && styles.iconTileLabelSelected,
+                            ]}>
+                            {iconItem.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
 
                 {/* Radius Presets */}
@@ -915,32 +988,95 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 15,
   },
-  categoryRow: {
+  iconHubHeaderRow: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 6,
   },
-  categoryBtn: {
-    flex: 1,
-    backgroundColor: '#0B0F17',
+  selectedIconPreviewPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  selectedIconPreviewText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  categoryFilterScroll: {
+    gap: 8,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  categoryFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#0B0F17',
     borderWidth: 1,
     borderColor: '#334155',
   },
-  categoryBtnActive: {
+  categoryFilterChipActive: {
     backgroundColor: '#1E293B',
     borderColor: '#38BDF8',
   },
-  categoryBtnText: {
+  categoryFilterChipText: {
     color: '#94A3B8',
     fontSize: 12,
     fontWeight: '500',
   },
-  categoryBtnTextActive: {
+  categoryFilterChipTextActive: {
+    color: '#38BDF8',
+    fontWeight: '700',
+  },
+  iconGridContainer: {
+    height: 180,
+    backgroundColor: '#0B0F17',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    overflow: 'hidden',
+  },
+  iconGridScrollView: {
+    flex: 1,
+  },
+  iconGridContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 8,
+    gap: 8,
+    justifyContent: 'flex-start',
+  },
+  iconGridTile: {
+    width: '23%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    backgroundColor: '#151B26',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  iconGridTileSelected: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderColor: '#38BDF8',
+  },
+  iconTileLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  iconTileLabelSelected: {
     color: '#38BDF8',
     fontWeight: '600',
   },

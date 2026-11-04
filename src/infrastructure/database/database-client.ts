@@ -83,6 +83,7 @@ export class DatabaseClient {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         radius_meters REAL NOT NULL,
+        icon TEXT DEFAULT 'location',
         created_at INTEGER NOT NULL
       );
 
@@ -93,6 +94,12 @@ export class DatabaseClient {
     `;
 
     this.executor.exec(ddl);
+
+    try {
+      this.executor.exec("ALTER TABLE places ADD COLUMN icon TEXT DEFAULT 'location'");
+    } catch {
+      // Column already exists
+    }
   }
 
   public getRepositories(): RepositoriesBundle {

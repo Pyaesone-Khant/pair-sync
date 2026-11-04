@@ -32,6 +32,7 @@ interface DemoPlace {
   latitude: number;
   longitude: number;
   radiusMeters: number;
+  icon?: string;
 }
 
 export default function RadarScreen() {
@@ -70,6 +71,7 @@ export default function RadarScreen() {
               latitude: p.coordinate.latitude,
               longitude: p.coordinate.longitude,
               radiusMeters: p.radiusMeters,
+              icon: p.icon,
             }))
           );
         } else if (mounted) {
@@ -216,7 +218,7 @@ export default function RadarScreen() {
     );
   };
 
-  const defaultCenter = { latitude: 37.7749, longitude: -122.4194 };
+  const defaultCenter = { latitude: 16.8052, longitude: 96.1561 };
   const userCenter = myTelemetry.coordinate ?? defaultCenter;
 
   // Smooth 60fps algorithmic coordinate interpolation (ADR 0007)
@@ -240,16 +242,29 @@ export default function RadarScreen() {
           latitudeDelta: 0.035,
           longitudeDelta: 0.035,
         }}>
-        {/* Safe Places Geofence Circles */}
+        {/* Safe Places Geofence Circles & Center Markers */}
         {places.map((place) => (
-          <Circle
-            key={place.id}
-            center={{ latitude: place.latitude, longitude: place.longitude }}
-            radius={place.radiusMeters}
-            fillColor="rgba(56, 189, 248, 0.18)"
-            strokeColor="#38BDF8"
-            strokeWidth={1.5}
-          />
+          <React.Fragment key={place.id}>
+            <Circle
+              center={{ latitude: place.latitude, longitude: place.longitude }}
+              radius={place.radiusMeters}
+              fillColor="rgba(56, 189, 248, 0.18)"
+              strokeColor="#38BDF8"
+              strokeWidth={1.5}
+            />
+            <Marker
+              coordinate={{ latitude: place.latitude, longitude: place.longitude }}
+              title={place.name}
+              anchor={{ x: 0.5, y: 0.5 }}>
+              <View style={styles.placeMarkerBadge}>
+                <Ionicons
+                  name={(place.icon as keyof typeof Ionicons.glyphMap) || 'shield-checkmark'}
+                  size={14}
+                  color="#38BDF8"
+                />
+              </View>
+            </Marker>
+          </React.Fragment>
         ))}
 
         {/* User Marker ("You") */}
@@ -325,9 +340,9 @@ export default function RadarScreen() {
       />
 
       {/* Floating Top Header */}
-      <SafeAreaView style={styles.topOverlayContainer}>
-        <View style={styles.topHeader}>
-          <View>
+      <SafeAreaView style={styles.topOverlayContainer} pointerEvents="box-none">
+        <View style={styles.topHeader} pointerEvents="box-none">
+          <View style={styles.brandFloatingBadge}>
             <Text style={styles.brandTitle}>PairSync</Text>
           </View>
 
@@ -456,29 +471,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 14,
-    backgroundColor: 'rgba(11, 15, 23, 0.75)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(35, 43, 58, 0.6)',
+  },
+  brandFloatingBadge: {
+    backgroundColor: 'rgba(21, 27, 38, 0.88)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   brandTitle: {
     color: '#F8FAFC',
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(30, 41, 59, 0.85)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    gap: 6,
+    backgroundColor: 'rgba(21, 27, 38, 0.88)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   modePillLabel: {
     color: '#94A3B8',
@@ -511,12 +540,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
   },
+  placeMarkerBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#0B0F17',
+    borderWidth: 1.5,
+    borderColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   bottomOverlay: {
     position: 'absolute',
-    bottom: 84,
+    bottom: 104,
     left: 16,
     right: 16,
     gap: 8,
+    paddingBottom: 4,
   },
   batteryEngineCard: {
     backgroundColor: 'rgba(21, 27, 38, 0.92)',
