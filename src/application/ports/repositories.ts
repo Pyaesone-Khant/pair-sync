@@ -7,6 +7,8 @@ import { CiphertextEnvelope } from '../../domain/messaging/ciphertext-envelope';
  */
 export interface IPairRepository {
   getActivePair(): Promise<Pair | null>;
+  getAllPairs(): Promise<Pair[]>;
+  getPairCount(): Promise<number>;
   savePair(pair: Pair): Promise<void>;
   updatePairStatus(id: string, status: PairStatus): Promise<void>;
 }

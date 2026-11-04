@@ -37,7 +37,18 @@ describe('ExpoNotificationService (Push & Local Alerts)', () => {
     expect(token).toBe('ExponentPushToken[mock-token-123]');
   });
 
-  it('returns null if permissions are denied by user', async () => {
+  it('returns simulator fallback token when not running on physical device', async () => {
+    const service = new ExpoNotificationService({
+      notificationsModule: mockNotificationsModule,
+      deviceModule: { isDevice: false },
+    });
+
+    const token = await service.registerForPushNotifications();
+    expect(token).toBe('ExponentPushToken[simulator-mock-token]');
+    expect(mockNotificationsModule.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns null if permissions are denied by user on physical device', async () => {
     mockNotificationsModule.requestPermissionsAsync = vi.fn().mockResolvedValue({ status: 'denied' });
 
     const service = new ExpoNotificationService({

@@ -98,6 +98,40 @@ export class SqlitePairRepository implements IPairRepository {
     });
   }
 
+  public async getAllPairs(): Promise<Pair[]> {
+    interface PairRow {
+      id: string;
+      local_device_id: string;
+      peer_device_id: string;
+      peer_public_key: string;
+      status: string;
+      created_at: number;
+    }
+
+    const rows = this.db.all<PairRow>(
+      'SELECT * FROM pairs ORDER BY created_at DESC'
+    );
+
+    return rows.map(
+      (row) =>
+        new Pair({
+          id: row.id,
+          localDeviceId: row.local_device_id,
+          peerDeviceId: row.peer_device_id,
+          peerPublicKey: row.peer_public_key,
+          status: row.status as PairStatus,
+          createdAt: row.created_at,
+        })
+    );
+  }
+
+  public async getPairCount(): Promise<number> {
+    const row = this.db.get<{ count: number }>(
+      'SELECT COUNT(*) as count FROM pairs'
+    );
+    return row?.count ?? 0;
+  }
+
   public async savePair(pair: Pair): Promise<void> {
     this.db.run(
       `INSERT OR REPLACE INTO pairs (id, local_device_id, peer_device_id, peer_public_key, status, created_at)

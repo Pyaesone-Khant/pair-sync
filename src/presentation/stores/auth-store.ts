@@ -6,6 +6,7 @@ export interface AuthState {
   account: Account | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   error: string | null;
 
   setAccount: (account: Account | null) => void;
@@ -19,6 +20,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   account: null,
   isAuthenticated: false,
   isLoading: false,
+  isInitialized: false,
   error: null,
 
   setAccount: (account: Account | null) => {
@@ -26,6 +28,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       account,
       isAuthenticated: Boolean(account),
       error: null,
+      isInitialized: true,
     });
   },
 
@@ -37,6 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         account,
         isAuthenticated: true,
         isLoading: false,
+        isInitialized: true,
         error: null,
       });
       return account;
@@ -55,6 +59,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         account: null,
         isAuthenticated: false,
         isLoading: false,
+        isInitialized: true,
         error: null,
       });
     } catch (err: unknown) {
@@ -64,6 +69,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkSession: async (authService: IAuthPort) => {
+    // Retain existing in-memory account if already set
+    const currentInStore = useAuthStore.getState().account;
+    if (currentInStore) {
+      set({ isInitialized: true, isLoading: false, isAuthenticated: true });
+      return;
+    }
+
     set({ isLoading: true });
     try {
       const current = await authService.getCurrentAccount();
@@ -71,9 +83,13 @@ export const useAuthStore = create<AuthState>((set) => ({
         account: current,
         isAuthenticated: Boolean(current),
         isLoading: false,
+        isInitialized: true,
       });
     } catch {
-      set({ isLoading: false });
+      set({
+        isLoading: false,
+        isInitialized: true,
+      });
     }
   },
 
@@ -82,6 +98,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       account: null,
       isAuthenticated: false,
       isLoading: false,
+      isInitialized: false,
       error: null,
     });
   },

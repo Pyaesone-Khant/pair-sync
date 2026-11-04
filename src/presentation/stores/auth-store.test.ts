@@ -43,11 +43,26 @@ describe('useAuthStore (ADR 0006 Google Auth)', () => {
     useAuthStore.getState().reset();
   });
 
-  it('starts unauthenticated', () => {
+  it('starts unauthenticated and uninitialized', () => {
     const state = useAuthStore.getState();
     expect(state.account).toBeNull();
     expect(state.isAuthenticated).toBe(false);
     expect(state.isLoading).toBe(false);
+    expect(state.isInitialized).toBe(false);
+  });
+
+  it('checks session and sets isInitialized to true', async () => {
+    expect(useAuthStore.getState().isInitialized).toBe(false);
+    await useAuthStore.getState().checkSession(mockAuth);
+    expect(useAuthStore.getState().isInitialized).toBe(true);
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+
+    // Now with existing user
+    await mockAuth.signInWithGoogle();
+    await useAuthStore.getState().checkSession(mockAuth);
+    expect(useAuthStore.getState().isInitialized).toBe(true);
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().account?.email).toBe('test.user@gmail.com');
   });
 
   it('signs in with Google successfully and stores Account entity', async () => {

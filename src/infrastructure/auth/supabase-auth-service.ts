@@ -156,10 +156,10 @@ export class SupabaseAuthService implements IAuthPort {
 
   public onAuthStateChanged(callback: (account: Account | null) => void): () => void {
     const { data: { subscription } } = this.client.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         if (session?.user) {
           callback(this.mapUserToAccount(session.user));
-        } else {
+        } else if (event === 'SIGNED_OUT') {
           callback(null);
         }
       }

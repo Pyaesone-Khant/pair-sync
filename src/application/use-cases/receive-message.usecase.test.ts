@@ -11,6 +11,12 @@ class InMemoryPairRepo implements IPairRepository {
   async getActivePair(): Promise<Pair | null> {
     return this.activePair;
   }
+  async getAllPairs(): Promise<Pair[]> {
+    return this.activePair ? [this.activePair] : [];
+  }
+  async getPairCount(): Promise<number> {
+    return this.activePair ? 1 : 0;
+  }
   async savePair(pair: Pair): Promise<void> {
     this.activePair = pair;
   }

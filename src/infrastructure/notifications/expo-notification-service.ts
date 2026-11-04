@@ -46,6 +46,14 @@ export class ExpoNotificationService implements INotificationPort {
     }
     if (deps.deviceModule) {
       this.isDevice = deps.deviceModule.isDevice;
+    } else {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Device = require('expo-device');
+        this.isDevice = Boolean(Device.isDevice);
+      } catch {
+        // Non-expo environment
+      }
     }
 
     this.configureNotificationHandler();
@@ -77,6 +85,10 @@ export class ExpoNotificationService implements INotificationPort {
   }
 
   public async registerForPushNotifications(): Promise<string | null> {
+    if (!this.isDevice) {
+      return 'ExponentPushToken[simulator-mock-token]';
+    }
+
     const mod = await this.getNotificationsModule();
     if (!mod) {
       return null;

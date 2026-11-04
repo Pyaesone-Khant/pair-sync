@@ -84,6 +84,30 @@ describe('Local-First SQLite Repositories (ADR 0004 & ADR 0009)', () => {
       expect(active?.status).toBe(PairStatus.Active);
       expect(active?.peerDeviceId).toBe('dev-bob');
     });
+
+    it('retrieves all pairs and returns accurate total pair count', async () => {
+      expect(await pairRepo.getPairCount()).toBe(0);
+
+      const pair1 = new Pair({
+        id: 'pair-1',
+        localDeviceId: 'dev-alice',
+        peerDeviceId: 'dev-bob',
+        peerPublicKey: 'bob-key-pub',
+      });
+      const pair2 = new Pair({
+        id: 'pair-2',
+        localDeviceId: 'dev-alice',
+        peerDeviceId: 'dev-carol',
+        peerPublicKey: 'carol-key-pub',
+      });
+
+      await pairRepo.savePair(pair1);
+      await pairRepo.savePair(pair2);
+
+      const all = await pairRepo.getAllPairs();
+      expect(all).toHaveLength(2);
+      expect(await pairRepo.getPairCount()).toBe(2);
+    });
   });
 
   describe('SqliteMessageRepository', () => {

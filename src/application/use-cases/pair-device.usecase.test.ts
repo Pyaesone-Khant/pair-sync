@@ -15,6 +15,14 @@ class MockPairRepository implements IPairRepository {
     return this.activePair;
   }
 
+  public async getAllPairs(): Promise<Pair[]> {
+    return this.activePair ? [this.activePair] : [];
+  }
+
+  public async getPairCount(): Promise<number> {
+    return this.activePair ? 1 : 0;
+  }
+
   public async savePair(pair: Pair): Promise<void> {
     this.activePair = pair;
   }
