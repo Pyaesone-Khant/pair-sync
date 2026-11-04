@@ -65,6 +65,7 @@ const DEFAULT_SEEDS: Array<{
 ];
 
 export default function PlacesScreen() {
+  const myTelemetry = useLocationStore((state) => state.myTelemetry);
   const peerTelemetry = useLocationStore((state) => state.peerTelemetry);
   const [places, setPlaces] = useState<SafePlace[]>([]);
 
@@ -166,8 +167,16 @@ export default function PlacesScreen() {
     setNameInput('');
     setCategoryInput('home');
     setRadiusInput(100);
-    setTargetCoord({ latitude: 37.7749, longitude: -122.4194 });
+    setTargetCoord(myTelemetry.coordinate ?? { latitude: 37.7749, longitude: -122.4194 });
     setModalVisible(true);
+  };
+
+  const handleUseCurrentLocation = () => {
+    if (myTelemetry.coordinate) {
+      setTargetCoord(myTelemetry.coordinate);
+    } else {
+      Alert.alert('Location Pending', 'GPS coordinate is not yet acquired.');
+    }
   };
 
   const openEditModal = (place: SafePlace) => {
@@ -476,11 +485,12 @@ export default function PlacesScreen() {
                     region={{
                       latitude: targetCoord.latitude,
                       longitude: targetCoord.longitude,
-                      latitudeDelta: 0.006,
-                      longitudeDelta: 0.006,
+                      latitudeDelta: 0.008,
+                      longitudeDelta: 0.008,
                     }}
-                    scrollEnabled={false}
-                    zoomEnabled={false}>
+                    onPress={(e) => setTargetCoord(e.nativeEvent.coordinate)}
+                    scrollEnabled={true}
+                    zoomEnabled={true}>
                     <Circle
                       center={targetCoord}
                       radius={radiusInput}
@@ -488,13 +498,29 @@ export default function PlacesScreen() {
                       strokeColor="#38BDF8"
                       strokeWidth={2}
                     />
-                    <Marker coordinate={targetCoord} />
+                    <Marker
+                      coordinate={targetCoord}
+                      draggable
+                      onDragEnd={(e) => setTargetCoord(e.nativeEvent.coordinate)}
+                    />
                   </MapView>
                   <View style={styles.mapRadiusBadge}>
                     <Ionicons name="radio-outline" size={12} color="#38BDF8" />
-                    <Text style={styles.mapRadiusBadgeText}>{radiusInput}m Geofence Perimeter</Text>
+                    <Text style={styles.mapRadiusBadgeText}>
+                      {radiusInput}m Geofence Perimeter • Tap map or drag pin
+                    </Text>
                   </View>
                 </View>
+
+                {/* Quick Location Action Button */}
+                <TouchableOpacity
+                  style={styles.currentLocationBtn}
+                  onPress={handleUseCurrentLocation}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Use Current Location">
+                  <Ionicons name="locate" size={15} color="#38BDF8" />
+                  <Text style={styles.currentLocationBtnText}>Center on My Current GPS Location</Text>
+                </TouchableOpacity>
 
                 {/* Name Input */}
                 <Text style={styles.inputLabel}>Place Name</Text>
@@ -1055,5 +1081,23 @@ const styles = StyleSheet.create({
     color: '#0B0F17',
     fontWeight: '700',
     fontSize: 14,
+  },
+  currentLocationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#1E293B',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 8,
+  },
+  currentLocationBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
 });
