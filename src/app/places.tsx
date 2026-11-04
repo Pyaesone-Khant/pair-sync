@@ -382,360 +382,363 @@ export default function PlacesScreen() {
           }
         />
 
-        {/* Add/Edit Modal with Interactive Geofence Map */}
+        {/* Add/Edit Safe Place Modal */}
         <Modal
           visible={modalVisible}
           animationType="slide"
-          transparent
-          onRequestClose={() => setModalVisible(false)}>
-          <KeyboardAvoidingView
-            style={styles.modalOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.modalContent}>
-              {/* Modal Top Bar */}
-              <View style={styles.modalHeaderRow}>
-                <View>
-                  <Text style={styles.modalTitle}>
-                    {editingPlaceId ? 'Edit Safe Place' : 'New Safe Place'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.modalCloseBtn}
-                  onPress={() => setModalVisible(false)}>
-                  <Ionicons name="close" size={20} color="#94A3B8" />
-                </TouchableOpacity>
-              </View>
+          transparent={!isMapExpanded}
+          onRequestClose={() => {
+            if (isMapExpanded) {
+              setIsMapExpanded(false);
+            } else {
+              setModalVisible(false);
+            }
+          }}>
+          {isMapExpanded ? (
+            /* Fullscreen Precision Geofence Map View */
+            <View style={[styles.fullscreenMapContainer, StyleSheet.absoluteFill]}>
+              <StatusBar barStyle="light-content" />
 
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.modalScrollContent}>
-                {/* Live Geofence Map Preview (Compact with Tap to Expand) */}
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  style={styles.modalMapWrapper}
-                  onPress={() => setIsMapExpanded(true)}
-                  accessibilityLabel="Tap to expand fullscreen map">
-                  <MapView
-                    style={styles.modalMap}
-                    userInterfaceStyle="dark"
-                    region={{
-                      latitude: targetCoord.latitude,
-                      longitude: targetCoord.longitude,
-                      latitudeDelta: 0.008,
-                      longitudeDelta: 0.008,
-                    }}
-                    scrollEnabled={false}
-                    zoomEnabled={false}
-                    pointerEvents="none">
-                    <Circle
-                      center={targetCoord}
-                      radius={radiusInput}
-                      fillColor="rgba(56, 189, 248, 0.25)"
-                      strokeColor="#38BDF8"
-                      strokeWidth={2}
-                    />
-                    <Marker coordinate={targetCoord} />
-                  </MapView>
-
-                  {/* Expand Floating Badge */}
-                  <View style={styles.expandActionBadge}>
-                    <Ionicons name="expand" size={13} color="#0B0F17" />
-                    <Text style={styles.expandActionBadgeText}>Expand & Pinpoint</Text>
+              {/* Native Fullscreen Interactive Map */}
+              <MapView
+                style={styles.fullscreenMapView}
+                userInterfaceStyle="dark"
+                region={{
+                  latitude: targetCoord.latitude,
+                  longitude: targetCoord.longitude,
+                  latitudeDelta: 0.006,
+                  longitudeDelta: 0.006,
+                }}
+                onPress={(e) => setTargetCoord(e.nativeEvent.coordinate)}
+                scrollEnabled={true}
+                zoomEnabled={true}
+                rotateEnabled={true}>
+                <Circle
+                  center={targetCoord}
+                  radius={radiusInput}
+                  fillColor="rgba(56, 189, 248, 0.22)"
+                  strokeColor="#38BDF8"
+                  strokeWidth={2}
+                />
+                <Marker
+                  coordinate={targetCoord}
+                  draggable
+                  title="Safe Place Center"
+                  description="Drag to adjust position"
+                  onDragEnd={(e) => setTargetCoord(e.nativeEvent.coordinate)}>
+                  <View style={styles.precisionMarker}>
+                    <View style={styles.precisionMarkerInner}>
+                      <Ionicons
+                        name={(selectedIcon as keyof typeof Ionicons.glyphMap) || 'shield-checkmark'}
+                        size={18}
+                        color="#38BDF8"
+                      />
+                    </View>
+                    <View style={styles.precisionMarkerArrow} />
                   </View>
+                </Marker>
+              </MapView>
 
-                  <View style={styles.mapRadiusBadge}>
-                    <Ionicons name="radio-outline" size={12} color="#38BDF8" />
-                    <Text style={styles.mapRadiusBadgeText}>
-                      {radiusInput}m Perimeter • Tap to expand map
+              {/* Floating Top Navigation Header */}
+              <SafeAreaView style={styles.fullscreenTopHeaderSafeArea} pointerEvents="box-none">
+                <View style={styles.fullscreenTopHeaderBar} pointerEvents="box-none">
+                  <TouchableOpacity
+                    style={styles.fullscreenGlassCloseBtn}
+                    onPress={() => setIsMapExpanded(false)}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Close full screen map">
+                    <Ionicons name="close" size={20} color="#F8FAFC" />
+                  </TouchableOpacity>
+
+                  <View style={styles.fullscreenHeaderCenter}>
+                    <Text style={styles.fullscreenHeaderTitle}>Pinpoint Location</Text>
+                    <Text style={styles.fullscreenHeaderSubtitle}>
+                      {targetCoord.latitude.toFixed(4)}°, {targetCoord.longitude.toFixed(4)}°
                     </Text>
                   </View>
-                </TouchableOpacity>
 
-                {/* Quick Location Action Button */}
-                <TouchableOpacity
-                  style={styles.currentLocationBtn}
-                  onPress={handleUseCurrentLocation}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Use Current Location">
-                  <Ionicons name="locate" size={15} color="#38BDF8" />
-                  <Text style={styles.currentLocationBtnText}>Center on My Current GPS Location</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.fullscreenDoneBtn}
+                    onPress={() => setIsMapExpanded(false)}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Confirm location">
+                    <Ionicons name="checkmark" size={16} color="#0B0F17" />
+                    <Text style={styles.fullscreenDoneBtnText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </SafeAreaView>
 
-                {/* Name Input */}
-                <Text style={styles.inputLabel}>Place Name</Text>
-                <View style={styles.inputContainer}>
-                  <Ionicons name="bookmark-outline" size={16} color="#64748B" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. Home, Office, Gym, Studio"
-                    placeholderTextColor="#64748B"
-                    value={nameInput}
-                    onChangeText={setNameInput}
-                  />
-                  {nameInput.length > 0 && (
-                    <TouchableOpacity onPress={() => setNameInput('')}>
-                      <Ionicons name="close-circle" size={16} color="#64748B" />
+              {/* Floating Bottom Precision Control Panel */}
+              <SafeAreaView style={styles.fullscreenBottomControlsSafeArea} pointerEvents="box-none">
+                <View style={styles.fullscreenBottomCard}>
+                  {/* Center on GPS button & gesture tip */}
+                  <View style={styles.fullscreenLocateRow}>
+                    <TouchableOpacity
+                      style={styles.fullscreenLocateBtn}
+                      onPress={handleUseCurrentLocation}
+                      activeOpacity={0.8}>
+                      <Ionicons name="locate" size={15} color="#38BDF8" />
+                      <Text style={styles.fullscreenLocateBtnText}>Snap to My Current GPS</Text>
                     </TouchableOpacity>
-                  )}
-                </View>
 
-                {/* Safe Places Icon Hub */}
-                <View style={styles.iconHubHeaderRow}>
-                  <Text style={styles.inputLabel}>Icon Hub ({PLACE_ICONS.length} Icons)</Text>
-                  <View style={styles.selectedIconPreviewPill}>
-                    <Ionicons
-                      name={(selectedIcon as keyof typeof Ionicons.glyphMap) || 'location'}
-                      size={15}
-                      color="#38BDF8"
-                    />
-                    <Text style={styles.selectedIconPreviewText}>{currentIconMetadata.label}</Text>
+                    <View style={styles.fullscreenHelpPill}>
+                      <Ionicons name="finger-print-outline" size={13} color="#94A3B8" />
+                      <Text style={styles.fullscreenHelpText}>Tap map or drag pin</Text>
+                    </View>
                   </View>
+
+                  {/* Radius selector */}
+                  <View style={styles.fullscreenRadiusSection}>
+                    <Text style={styles.fullscreenRadiusLabel}>
+                      Geofence Radius: <Text style={styles.fullscreenRadiusHighlight}>{radiusInput} meters</Text>
+                    </Text>
+                    <View style={styles.fullscreenRadiusRow}>
+                      {[50, 100, 150, 250, 500].map((r) => {
+                        const isSelected = radiusInput === r;
+                        return (
+                          <TouchableOpacity
+                            key={r}
+                            style={[
+                              styles.fullscreenRadiusChip,
+                              isSelected && styles.fullscreenRadiusChipActive,
+                            ]}
+                            onPress={() => setRadiusInput(r)}>
+                            <Text
+                              style={[
+                                styles.fullscreenRadiusChipText,
+                                isSelected && styles.fullscreenRadiusChipTextActive,
+                              ]}>
+                              {r}m
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Confirm button */}
+                  <TouchableOpacity
+                    style={styles.fullscreenConfirmBtn}
+                    onPress={() => setIsMapExpanded(false)}
+                    activeOpacity={0.85}>
+                    <Ionicons name="checkmark-circle" size={18} color="#0B0F17" />
+                    <Text style={styles.fullscreenConfirmBtnText}>Confirm Geofence Perimeter</Text>
+                  </TouchableOpacity>
+                </View>
+              </SafeAreaView>
+            </View>
+          ) : (
+            /* Form View with Compact Map Preview */
+            <KeyboardAvoidingView
+              style={styles.modalOverlay}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+              <View style={styles.modalContent}>
+                {/* Modal Top Bar */}
+                <View style={styles.modalHeaderRow}>
+                  <View>
+                    <Text style={styles.modalTitle}>
+                      {editingPlaceId ? 'Edit Safe Place' : 'New Safe Place'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => setModalVisible(false)}>
+                    <Ionicons name="close" size={20} color="#94A3B8" />
+                  </TouchableOpacity>
                 </View>
 
-                {/* Category Filter Tabs */}
                 <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.categoryFilterScroll}>
-                  {PLACE_ICON_CATEGORIES.map((cat) => {
-                    const isActive = selectedCategoryFilter === cat;
-                    return (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[
-                          styles.categoryFilterChip,
-                          isActive && styles.categoryFilterChipActive,
-                        ]}
-                        onPress={() => setSelectedCategoryFilter(cat)}>
-                        <Text
-                          style={[
-                            styles.categoryFilterChipText,
-                            isActive && styles.categoryFilterChipTextActive,
-                          ]}>
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.modalScrollContent}>
+                  {/* Live Geofence Map Preview (Compact with Tap to Expand) */}
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={styles.modalMapWrapper}
+                    onPress={() => setIsMapExpanded(true)}
+                    accessibilityLabel="Tap to expand fullscreen map">
+                    <MapView
+                      style={styles.modalMap}
+                      userInterfaceStyle="dark"
+                      region={{
+                        latitude: targetCoord.latitude,
+                        longitude: targetCoord.longitude,
+                        latitudeDelta: 0.008,
+                        longitudeDelta: 0.008,
+                      }}
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                      pointerEvents="none">
+                      <Circle
+                        center={targetCoord}
+                        radius={radiusInput}
+                        fillColor="rgba(56, 189, 248, 0.25)"
+                        strokeColor="#38BDF8"
+                        strokeWidth={2}
+                      />
+                      <Marker coordinate={targetCoord} />
+                    </MapView>
 
-                {/* Icon Grid Hub */}
-                <View style={styles.iconGridContainer}>
+                    {/* Expand Floating Badge */}
+                    <View style={styles.expandActionBadge}>
+                      <Ionicons name="expand" size={13} color="#0B0F17" />
+                      <Text style={styles.expandActionBadgeText}>Expand & Pinpoint</Text>
+                    </View>
+
+                    <View style={styles.mapRadiusBadge}>
+                      <Ionicons name="radio-outline" size={12} color="#38BDF8" />
+                      <Text style={styles.mapRadiusBadgeText}>
+                        {radiusInput}m Perimeter • Tap to expand map
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Quick Location Action Button */}
+                  <TouchableOpacity
+                    style={styles.currentLocationBtn}
+                    onPress={handleUseCurrentLocation}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Use Current Location">
+                    <Ionicons name="locate" size={15} color="#38BDF8" />
+                    <Text style={styles.currentLocationBtnText}>Center on My Current GPS Location</Text>
+                  </TouchableOpacity>
+
+                  {/* Name Input */}
+                  <Text style={styles.inputLabel}>Place Name</Text>
+                  <View style={styles.inputContainer}>
+                    <Ionicons name="bookmark-outline" size={16} color="#64748B" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="e.g. Home, Office, Gym, Studio"
+                      placeholderTextColor="#64748B"
+                      value={nameInput}
+                      onChangeText={setNameInput}
+                    />
+                    {nameInput.length > 0 && (
+                      <TouchableOpacity onPress={() => setNameInput('')}>
+                        <Ionicons name="close-circle" size={16} color="#64748B" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Safe Places Icon Hub */}
+                  <View style={styles.iconHubHeaderRow}>
+                    <Text style={styles.inputLabel}>Icon Hub ({PLACE_ICONS.length} Icons)</Text>
+                    <View style={styles.selectedIconPreviewPill}>
+                      <Ionicons
+                        name={(selectedIcon as keyof typeof Ionicons.glyphMap) || 'location'}
+                        size={15}
+                        color="#38BDF8"
+                      />
+                      <Text style={styles.selectedIconPreviewText}>{currentIconMetadata.label}</Text>
+                    </View>
+                  </View>
+
+                  {/* Category Filter Tabs */}
                   <ScrollView
-                    nestedScrollEnabled
-                    style={styles.iconGridScrollView}
-                    contentContainerStyle={styles.iconGridContent}>
-                    {filteredIcons.map((iconItem) => {
-                      const isSelected = selectedIcon === iconItem.name;
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.categoryFilterScroll}>
+                    {PLACE_ICON_CATEGORIES.map((cat) => {
+                      const isActive = selectedCategoryFilter === cat;
                       return (
                         <TouchableOpacity
-                          key={iconItem.name}
+                          key={cat}
                           style={[
-                            styles.iconGridTile,
-                            isSelected && styles.iconGridTileSelected,
+                            styles.categoryFilterChip,
+                            isActive && styles.categoryFilterChipActive,
                           ]}
-                          onPress={() => {
-                            setSelectedIcon(iconItem.name);
-                            if (iconItem.category === 'Living') setCategoryInput('home');
-                            else if (iconItem.category === 'Work') setCategoryInput('work');
-                            else if (iconItem.category === 'Health') setCategoryInput('gym');
-                            else setCategoryInput('other');
-                          }}>
-                          <Ionicons
-                            name={iconItem.name as keyof typeof Ionicons.glyphMap}
-                            size={20}
-                            color={isSelected ? '#38BDF8' : '#94A3B8'}
-                          />
+                          onPress={() => setSelectedCategoryFilter(cat)}>
                           <Text
-                            numberOfLines={1}
                             style={[
-                              styles.iconTileLabel,
-                              isSelected && styles.iconTileLabelSelected,
+                              styles.categoryFilterChipText,
+                              isActive && styles.categoryFilterChipTextActive,
                             ]}>
-                            {iconItem.label}
+                            {cat}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </ScrollView>
-                </View>
 
-                {/* Radius Presets */}
-                <Text style={styles.inputLabel}>
-                  Geofence Radius ({radiusInput}m)
-                </Text>
-                <View style={styles.radiusRow}>
-                  {[50, 100, 150, 250, 500].map((r) => (
-                    <TouchableOpacity
-                      key={r}
-                      style={[styles.radiusBtn, radiusInput === r && styles.radiusBtnActive]}
-                      onPress={() => setRadiusInput(r)}>
-                      <Text
-                        style={[
-                          styles.radiusBtnText,
-                          radiusInput === r && styles.radiusBtnTextActive,
-                        ]}>
-                        {r}m
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Modal Buttons */}
-                <View style={styles.modalButtonsRow}>
-                  <TouchableOpacity
-                    style={styles.cancelBtn}
-                    onPress={() => setModalVisible(false)}>
-                    <Text style={styles.cancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.saveBtn} onPress={handleSavePlace}>
-                    <Ionicons name="checkmark" size={16} color="#0B0F17" />
-                    <Text style={styles.saveBtnText}>Save Safe Place</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        {/* Fullscreen Precision Geofence Map Modal */}
-        <Modal
-          visible={isMapExpanded}
-          animationType="slide"
-          presentationStyle="fullScreen"
-          onRequestClose={() => setIsMapExpanded(false)}>
-          <View style={styles.fullscreenMapContainer}>
-            <StatusBar barStyle="light-content" />
-
-            {/* Native Fullscreen Interactive Map */}
-            <MapView
-              style={styles.fullscreenMapView}
-              userInterfaceStyle="dark"
-              initialRegion={{
-                latitude: targetCoord.latitude,
-                longitude: targetCoord.longitude,
-                latitudeDelta: 0.006,
-                longitudeDelta: 0.006,
-              }}
-              onPress={(e) => setTargetCoord(e.nativeEvent.coordinate)}
-              scrollEnabled={true}
-              zoomEnabled={true}
-              rotateEnabled={true}>
-              <Circle
-                center={targetCoord}
-                radius={radiusInput}
-                fillColor="rgba(56, 189, 248, 0.22)"
-                strokeColor="#38BDF8"
-                strokeWidth={2}
-              />
-              <Marker
-                coordinate={targetCoord}
-                draggable
-                title="Safe Place Center"
-                description="Drag to adjust position"
-                onDragEnd={(e) => setTargetCoord(e.nativeEvent.coordinate)}>
-                <View style={styles.precisionMarker}>
-                  <View style={styles.precisionMarkerInner}>
-                    <Ionicons
-                      name={(selectedIcon as keyof typeof Ionicons.glyphMap) || 'shield-checkmark'}
-                      size={18}
-                      color="#38BDF8"
-                    />
-                  </View>
-                  <View style={styles.precisionMarkerArrow} />
-                </View>
-              </Marker>
-            </MapView>
-
-            {/* Floating Top Navigation Header */}
-            <SafeAreaView style={styles.fullscreenTopHeaderSafeArea} pointerEvents="box-none">
-              <View style={styles.fullscreenTopHeaderBar} pointerEvents="box-none">
-                <TouchableOpacity
-                  style={styles.fullscreenGlassCloseBtn}
-                  onPress={() => setIsMapExpanded(false)}
-                  activeOpacity={0.8}
-                  accessibilityLabel="Close full screen map">
-                  <Ionicons name="close" size={20} color="#F8FAFC" />
-                </TouchableOpacity>
-
-                <View style={styles.fullscreenHeaderCenter}>
-                  <Text style={styles.fullscreenHeaderTitle}>Pinpoint Location</Text>
-                  <Text style={styles.fullscreenHeaderSubtitle}>
-                    {targetCoord.latitude.toFixed(4)}°, {targetCoord.longitude.toFixed(4)}°
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.fullscreenDoneBtn}
-                  onPress={() => setIsMapExpanded(false)}
-                  activeOpacity={0.8}
-                  accessibilityLabel="Confirm location">
-                  <Ionicons name="checkmark" size={16} color="#0B0F17" />
-                  <Text style={styles.fullscreenDoneBtnText}>Done</Text>
-                </TouchableOpacity>
-              </View>
-            </SafeAreaView>
-
-            {/* Floating Bottom Precision Control Panel */}
-            <SafeAreaView style={styles.fullscreenBottomControlsSafeArea} pointerEvents="box-none">
-              <View style={styles.fullscreenBottomCard}>
-                {/* Center on GPS button & gesture tip */}
-                <View style={styles.fullscreenLocateRow}>
-                  <TouchableOpacity
-                    style={styles.fullscreenLocateBtn}
-                    onPress={handleUseCurrentLocation}
-                    activeOpacity={0.8}>
-                    <Ionicons name="locate" size={15} color="#38BDF8" />
-                    <Text style={styles.fullscreenLocateBtnText}>Snap to My Current GPS</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.fullscreenHelpPill}>
-                    <Ionicons name="finger-print-outline" size={13} color="#94A3B8" />
-                    <Text style={styles.fullscreenHelpText}>Tap map or drag pin</Text>
-                  </View>
-                </View>
-
-                {/* Radius selector */}
-                <View style={styles.fullscreenRadiusSection}>
-                  <Text style={styles.fullscreenRadiusLabel}>
-                    Geofence Radius: <Text style={styles.fullscreenRadiusHighlight}>{radiusInput} meters</Text>
-                  </Text>
-                  <View style={styles.fullscreenRadiusRow}>
-                    {[50, 100, 150, 250, 500].map((r) => {
-                      const isSelected = radiusInput === r;
-                      return (
-                        <TouchableOpacity
-                          key={r}
-                          style={[
-                            styles.fullscreenRadiusChip,
-                            isSelected && styles.fullscreenRadiusChipActive,
-                          ]}
-                          onPress={() => setRadiusInput(r)}>
-                          <Text
+                  {/* Icon Grid Hub */}
+                  <View style={styles.iconGridContainer}>
+                    <ScrollView
+                      nestedScrollEnabled
+                      style={styles.iconGridScrollView}
+                      contentContainerStyle={styles.iconGridContent}>
+                      {filteredIcons.map((iconItem) => {
+                        const isSelected = selectedIcon === iconItem.name;
+                        return (
+                          <TouchableOpacity
+                            key={iconItem.name}
                             style={[
-                              styles.fullscreenRadiusChipText,
-                              isSelected && styles.fullscreenRadiusChipTextActive,
-                            ]}>
-                            {r}m
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                              styles.iconGridTile,
+                              isSelected && styles.iconGridTileSelected,
+                            ]}
+                            onPress={() => {
+                              setSelectedIcon(iconItem.name);
+                              if (iconItem.category === 'Living') setCategoryInput('home');
+                              else if (iconItem.category === 'Work') setCategoryInput('work');
+                              else if (iconItem.category === 'Health') setCategoryInput('gym');
+                              else setCategoryInput('other');
+                            }}>
+                            <Ionicons
+                              name={iconItem.name as keyof typeof Ionicons.glyphMap}
+                              size={20}
+                              color={isSelected ? '#38BDF8' : '#94A3B8'}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={[
+                                styles.iconTileLabel,
+                                isSelected && styles.iconTileLabelSelected,
+                              ]}>
+                              {iconItem.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
                   </View>
-                </View>
 
-                {/* Confirm button */}
-                <TouchableOpacity
-                  style={styles.fullscreenConfirmBtn}
-                  onPress={() => setIsMapExpanded(false)}
-                  activeOpacity={0.85}>
-                  <Ionicons name="checkmark-circle" size={18} color="#0B0F17" />
-                  <Text style={styles.fullscreenConfirmBtnText}>Confirm Geofence Perimeter</Text>
-                </TouchableOpacity>
+                  {/* Radius Presets */}
+                  <Text style={styles.inputLabel}>
+                    Geofence Radius ({radiusInput}m)
+                  </Text>
+                  <View style={styles.radiusRow}>
+                    {[50, 100, 150, 250, 500].map((r) => (
+                      <TouchableOpacity
+                        key={r}
+                        style={[styles.radiusBtn, radiusInput === r && styles.radiusBtnActive]}
+                        onPress={() => setRadiusInput(r)}>
+                        <Text
+                          style={[
+                            styles.radiusBtnText,
+                            radiusInput === r && styles.radiusBtnTextActive,
+                          ]}>
+                          {r}m
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Modal Buttons */}
+                  <View style={styles.modalButtonsRow}>
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      onPress={() => setModalVisible(false)}>
+                      <Text style={styles.cancelBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.saveBtn} onPress={handleSavePlace}>
+                      <Ionicons name="checkmark" size={16} color="#0B0F17" />
+                      <Text style={styles.saveBtnText}>Save Safe Place</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
               </View>
-            </SafeAreaView>
-          </View>
+            </KeyboardAvoidingView>
+          )}
         </Modal>
       </View>
     </SafeAreaView>
