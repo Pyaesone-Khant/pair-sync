@@ -32,8 +32,14 @@ export class SupabaseSignalingChannel implements ISignalingPort {
     if (config?.supabaseClient) {
       this.client = config.supabaseClient;
     } else {
-      const url = config?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL;
-      const key = config?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+      const url =
+        config?.supabaseUrl ||
+        process.env.EXPO_PUBLIC_SUPABASE_URL ||
+        'https://uqvkhfxnnvnzftvvwlwi.supabase.co';
+      const key =
+        config?.supabaseAnonKey ||
+        process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+        'sb_publishable_B4fWBTYmHyUOXjGikfWn4g_E3F48cWf';
 
       if (url && key) {
         this.client = createClient(url, key, {
