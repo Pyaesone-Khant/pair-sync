@@ -14,6 +14,7 @@ import { DeviceKeyManager, InMemoryKeyStore } from '../infrastructure/security/d
 import { PairDeviceUseCase, PairingPayload } from '../application/use-cases/pair-device.usecase';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Pair } from '../domain/pairing/pair';
+import { AccountStatusCard } from '../presentation/components/AccountStatusCard';
 
 export default function PairingScreen() {
   const [activeTab, setActiveTab] = useState<'myCode' | 'scanner'>('myCode');
@@ -132,6 +133,9 @@ export default function PairingScreen() {
             <Text style={styles.engineBadgeText}>Ed25519</Text>
           </View>
         </View>
+
+        {/* Account Identity Card (Google Sign-In via Supabase) */}
+        <AccountStatusCard />
 
         {/* Tab Switcher */}
         <View style={styles.tabSwitcher}>
