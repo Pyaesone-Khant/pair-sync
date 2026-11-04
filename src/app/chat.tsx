@@ -238,9 +238,6 @@ export default function ChatScreen() {
               </View>
               <View style={styles.titleContainer}>
                 <Text style={styles.title}>My Partner</Text>
-                <Text style={styles.subtitle} numberOfLines={1}>
-                  End-to-End Encrypted • Direct Stream
-                </Text>
               </View>
             </View>
 
@@ -281,19 +278,6 @@ export default function ChatScreen() {
                 <Ionicons name="videocam" size={18} color="#38BDF8" />
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-
-        {/* Security Strip Banner */}
-        <View style={styles.securityBanner}>
-          <View style={styles.securityBannerLeft}>
-            <Ionicons name="shield-checkmark" size={13} color="#10B981" />
-            <Text style={styles.securityBannerText}>
-              Zero-Knowledge Blind Relay • Ephemeral SQLite
-            </Text>
-          </View>
-          <View style={styles.securityBadge}>
-            <Text style={styles.securityBadgeText}>Ratchet Active</Text>
           </View>
         </View>
 

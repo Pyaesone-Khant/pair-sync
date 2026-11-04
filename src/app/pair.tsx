@@ -108,9 +108,6 @@ export default function PairingScreen() {
           <View style={styles.headerTitleRow}>
             <View style={styles.titleContainer}>
               <Text style={styles.title}>Pairing Ceremony</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                Hardware Key Exchange • 1-to-1 Device Bond
-              </Text>
             </View>
 
             {/* Bond Status Badge */}
@@ -132,20 +129,6 @@ export default function PairingScreen() {
                 {isPaired ? 'Bond Active' : 'Awaiting Pair'}
               </Text>
             </View>
-          </View>
-        </View>
-
-        {/* Security Overview Strip Banner */}
-        <View style={styles.statusBanner}>
-          <View style={styles.statusBannerLeft}>
-            <View style={[styles.statusIndicatorDot, isPaired && styles.statusIndicatorDotActive]} />
-            <Text style={styles.statusBannerTitle}>
-              Zero Server Knowledge • Signal Double Ratchet
-            </Text>
-          </View>
-          <View style={styles.engineBadge}>
-            <Ionicons name="key-outline" size={12} color="#38BDF8" />
-            <Text style={styles.engineBadgeText}>Ed25519</Text>
           </View>
         </View>
 
@@ -196,22 +179,16 @@ export default function PairingScreen() {
                 <View style={styles.qrWhiteTile}>
                   <Ionicons name="qr-code" size={140} color="#0B0F17" />
                 </View>
-                <Text style={styles.qrLabel}>PairSync Hardware Key</Text>
-                <Text style={styles.qrSubtext}>
-                  Have your partner scan this screen with their PairSync camera
-                </Text>
+                <Text style={styles.qrLabel}>Pairing QR Code</Text>
               </View>
 
               {/* Cryptographic Safety Number */}
               <View style={styles.safetyCard}>
                 <View style={styles.safetyHeaderRow}>
                   <Ionicons name="shield-checkmark-outline" size={14} color="#10B981" />
-                  <Text style={styles.safetyLabel}>Cryptographic Safety Number</Text>
+                  <Text style={styles.safetyLabel}>Safety Number</Text>
                 </View>
                 <Text style={styles.safetyNumber}>9481 • 2048 • 7719 • 3102</Text>
-                <Text style={styles.safetyExplanation}>
-                  Verify these digits match on your partner's screen to confirm zero tampering or relay interception.
-                </Text>
               </View>
 
               {/* Remote Invite Button */}
@@ -260,10 +237,6 @@ export default function PairingScreen() {
                     <Ionicons name="scan-outline" size={48} color="rgba(56, 189, 248, 0.5)" />
                   )}
                 </View>
-
-                <Text style={styles.scannerInstruction}>
-                  Align partner's QR code within the viewfinder frame
-                </Text>
               </View>
 
               <TouchableOpacity

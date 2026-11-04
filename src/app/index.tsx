@@ -358,10 +358,6 @@ export default function RadarScreen() {
         <View style={styles.topHeader}>
           <View>
             <Text style={styles.brandTitle}>PairSync</Text>
-            <View style={styles.connectionBadgeRow}>
-              <Ionicons name="lock-closed" size={11} color="#10B981" />
-              <Text style={styles.connectionBadge}>Encrypted • Connected</Text>
-            </View>
           </View>
 
           <View style={styles.modePill}>

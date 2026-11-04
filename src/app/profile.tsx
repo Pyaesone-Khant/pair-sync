@@ -75,10 +75,7 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
             <View style={styles.titleContainer}>
-              <Text style={styles.title}>Account & Profile</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                Google Identity • Hardware Keypair State
-              </Text>
+              <Text style={styles.title}>Profile</Text>
             </View>
 
             <View style={styles.verifiedChip}>
@@ -113,11 +110,6 @@ export default function ProfileScreen() {
               <Text style={styles.heroEmail} numberOfLines={1}>
                 {email}
               </Text>
-
-              <View style={styles.heroMetaRow}>
-                <Ionicons name="shield-checkmark" size={12} color={DesignTokens.colors.accentEmerald} />
-                <Text style={styles.heroMetaText}>Identity Verified via Supabase</Text>
-              </View>
             </View>
           </View>
 
@@ -127,7 +119,7 @@ export default function ProfileScreen() {
               <View style={styles.sectionHeaderIcon}>
                 <Ionicons name="hardware-chip-outline" size={15} color={DesignTokens.colors.accentCyan} />
               </View>
-              <Text style={styles.sectionTitle}>1-to-1 Device Pairing Bond</Text>
+              <Text style={styles.sectionTitle}>Device Pairing</Text>
             </View>
 
             <View style={styles.metricRow}>
@@ -140,25 +132,8 @@ export default function ProfileScreen() {
             <View style={styles.divider} />
 
             <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Local Hardware ID</Text>
+              <Text style={styles.metricLabel}>Device ID</Text>
               <Text style={styles.metricValue}>device-local-user</Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Keypair Algorithm</Text>
-              <Text style={styles.metricValue}>Ed25519 (RFC 8032)</Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>E2EE Ratchet Protocol</Text>
-              <View style={styles.statusIndicatorRow}>
-                <View style={styles.greenPulseDot} />
-                <Text style={styles.metricValueHighlight}>Signal Double Ratchet</Text>
-              </View>
             </View>
           </View>
 
@@ -168,38 +143,22 @@ export default function ProfileScreen() {
               <View style={styles.sectionHeaderIcon}>
                 <Ionicons name="cloud-outline" size={15} color={DesignTokens.colors.accentEmerald} />
               </View>
-              <Text style={styles.sectionTitle}>Signaling & Privacy Architecture</Text>
+              <Text style={styles.sectionTitle}>Connection & Privacy</Text>
             </View>
 
             <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Blind Relay Status</Text>
+              <Text style={styles.metricLabel}>Status</Text>
               <View style={styles.statusIndicatorRow}>
                 <View style={styles.greenPulseDot} />
-                <Text style={styles.metricValueHighlight}>Live Broadcast Connected</Text>
+                <Text style={styles.metricValueHighlight}>Connected</Text>
               </View>
             </View>
 
             <View style={styles.divider} />
 
             <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Relay Endpoint</Text>
-              <Text style={styles.metricValue} numberOfLines={1}>
-                uqvkhfxnnvnzftvvwlwi.supabase.co
-              </Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Local Data Storage</Text>
-              <Text style={styles.metricValue}>Encrypted Local-First SQLite</Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Cloud Location Logs</Text>
-              <Text style={styles.metricValueMuted}>None (Zero Knowledge)</Text>
+              <Text style={styles.metricLabel}>Storage</Text>
+              <Text style={styles.metricValue}>Encrypted Local SQLite</Text>
             </View>
           </View>
 
@@ -209,19 +168,12 @@ export default function ProfileScreen() {
               <View style={styles.sectionHeaderIcon}>
                 <Ionicons name="information-circle-outline" size={15} color="#94A3B8" />
               </View>
-              <Text style={styles.sectionTitle}>Application Information</Text>
+              <Text style={styles.sectionTitle}>About</Text>
             </View>
 
             <View style={styles.metricRow}>
               <Text style={styles.metricLabel}>App Version</Text>
-              <Text style={styles.metricValue}>PairSync 1.0.0 (Build 58.0)</Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Architecture Mandate</Text>
-              <Text style={styles.metricValue}>ADR 0001 - ADR 0010</Text>
+              <Text style={styles.metricValue}>PairSync 1.0.0</Text>
             </View>
           </View>
         </ScrollView>

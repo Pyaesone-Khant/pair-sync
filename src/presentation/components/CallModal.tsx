@@ -107,7 +107,7 @@ export const CallModal: React.FC<CallModalProps> = ({
         <View style={styles.topHeader}>
           <View style={styles.secureBadge}>
             <Ionicons name="lock-closed" size={13} color={DesignTokens.colors.accentEmerald} />
-            <Text style={styles.secureBadgeText}>End-to-End Encrypted P2P</Text>
+            <Text style={styles.secureBadgeText}>Encrypted</Text>
           </View>
         </View>
 

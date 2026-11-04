@@ -286,9 +286,6 @@ export default function PlacesScreen() {
           <View style={styles.headerTitleRow}>
             <View style={styles.titleContainer}>
               <Text style={styles.title}>Safe Places</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                Private Geofences • Zero Cloud Tracking
-              </Text>
             </View>
 
             <TouchableOpacity
@@ -298,24 +295,6 @@ export default function PlacesScreen() {
               accessibilityLabel="Add Safe Place">
               <Ionicons name="pin" size={20} color="#0B0F17" />
             </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Status & Telemetry Banner */}
-        <View style={styles.statusBanner}>
-          <View style={styles.statusBannerLeft}>
-            <View style={styles.statusIndicatorDot} />
-            <Text style={styles.statusBannerTitle}>
-              {displayPlaces.length} Monitored Zones
-            </Text>
-            <Text style={styles.statusBannerDivider}>•</Text>
-            <Text style={styles.statusBannerHighlight}>
-              {presentCount > 0 ? `${presentCount} Partner Inside` : 'All Vacant'}
-            </Text>
-          </View>
-          <View style={styles.engineBadge}>
-            <Ionicons name="hardware-chip-outline" size={12} color="#38BDF8" />
-            <Text style={styles.engineBadgeText}>Autonomous</Text>
           </View>
         </View>
 
@@ -462,9 +441,6 @@ export default function PlacesScreen() {
                 <View>
                   <Text style={styles.modalTitle}>
                     {editingPlaceId ? 'Edit Safe Place' : 'New Safe Place'}
-                  </Text>
-                  <Text style={styles.modalSubtitle}>
-                    Autonomous geofence evaluated on-device
                   </Text>
                 </View>
                 <TouchableOpacity

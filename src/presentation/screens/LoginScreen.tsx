@@ -64,49 +64,34 @@ export const LoginScreen: React.FC = () => {
           </View>
 
           <Text style={styles.brandTitle}>PairSync</Text>
-          <Text style={styles.brandTagline}>Ultra-Private 1-to-1 Sync</Text>
-
-          <Text style={styles.brandDescription}>
-            Hardware-to-hardware presence, instant geofencing, and encrypted messaging.
-            Zero cloud tracking, zero plaintext logs.
-          </Text>
         </View>
 
         {/* Security & Feature Badges */}
         <View style={styles.featureCardsContainer}>
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="shield-checkmark" size={16} color={DesignTokens.colors.accentEmerald} />
+              <Ionicons name="navigate" size={16} color={DesignTokens.colors.accentEmerald} />
             </View>
             <View style={styles.featureTextCol}>
-              <Text style={styles.featureTitle}>Zero-Knowledge Blind Relay</Text>
-              <Text style={styles.featureSubtitle}>
-                Supabase relays encrypted envelopes without reading content.
-              </Text>
+              <Text style={styles.featureTitle}>Live Radar & Presence</Text>
             </View>
           </View>
 
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="key" size={16} color={DesignTokens.colors.accentCyan} />
+              <Ionicons name="shield-checkmark" size={16} color={DesignTokens.colors.accentCyan} />
             </View>
             <View style={styles.featureTextCol}>
-              <Text style={styles.featureTitle}>Ed25519 Device Pairing</Text>
-              <Text style={styles.featureSubtitle}>
-                Cryptographic authorization exchanged out-of-band via QR code.
-              </Text>
+              <Text style={styles.featureTitle}>Safe Places Geofencing</Text>
             </View>
           </View>
 
           <View style={styles.featureRow}>
             <View style={styles.featureIconBadge}>
-              <Ionicons name="location" size={16} color="#F43F5E" />
+              <Ionicons name="chatbubbles" size={16} color="#F43F5E" />
             </View>
             <View style={styles.featureTextCol}>
-              <Text style={styles.featureTitle}>Local-First SQLite Places</Text>
-              <Text style={styles.featureSubtitle}>
-                Geofence coordinates evaluated on physical hardware chips.
-              </Text>
+              <Text style={styles.featureTitle}>1-to-1 Calls & Chat</Text>
             </View>
           </View>
         </View>
@@ -147,12 +132,6 @@ export const LoginScreen: React.FC = () => {
             <Ionicons name="flash-outline" size={15} color={DesignTokens.colors.accentCyan} />
             <Text style={styles.demoBtnText}>Continue as Demo Account (Alex Morgan)</Text>
           </TouchableOpacity>
-
-          {/* Legal / Architecture Footnote */}
-          <Text style={styles.disclaimerText}>
-            Google Authentication secures push tokens and prevents cloud spam.
-            It does not decrypt peer data or store server location history.
-          </Text>
         </View>
       </View>
     </SafeAreaView>
