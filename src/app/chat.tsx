@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { DesignTokens } from '../constants/theme';
 import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { CiphertextEnvelope } from '../domain/messaging/ciphertext-envelope';
+import { CallModal } from '../presentation/components/CallModal';
+import { useCallStore } from '../presentation/stores/call-store';
 
 interface LocalChatMessage {
   id: string;
@@ -47,7 +49,7 @@ export default function ChatScreen() {
   useEffect(() => {
     signalingChannel.joinPairRoom('pair-primary');
 
-    const unsubscribe = signalingChannel.onEnvelopeReceived((envelope) => {
+    const unsubscribeEnvelope = signalingChannel.onEnvelopeReceived((envelope) => {
       // Decode incoming message envelope from peer
       const incomingText = envelope.ciphertext.startsWith('plain:')
         ? envelope.ciphertext.replace('plain:', '')
@@ -67,8 +69,19 @@ export default function ChatScreen() {
       setMessages((prev) => [...prev, incomingMessage]);
     });
 
+    const unsubscribeCall = signalingChannel.onCallSignalReceived((signal) => {
+      if (signal.type === 'offer') {
+        useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
+      } else if (signal.type === 'answer') {
+        useCallStore.getState().acceptCall();
+      } else if (signal.type === 'hangup' || signal.type === 'reject') {
+        useCallStore.getState().endCall();
+      }
+    });
+
     return () => {
-      unsubscribe();
+      unsubscribeEnvelope();
+      unsubscribeCall();
       signalingChannel.leavePairRoom();
     };
   }, [signalingChannel]);
@@ -163,13 +176,31 @@ export default function ChatScreen() {
             <View style={styles.headerActionGroup}>
               <TouchableOpacity
                 style={styles.headerActionBtn}
-                onPress={() => Alert.alert('Initiate Call', 'Connecting direct P2P audio call with CallKit...')}
+                onPress={() => {
+                  const callId = useCallStore.getState().startOutgoingCall('My Partner', false);
+                  signalingChannel.sendCallSignal({
+                    type: 'offer',
+                    callId,
+                    senderDeviceId: 'local-device',
+                    isVideo: false,
+                    timestamp: Date.now(),
+                  });
+                }}
                 accessibilityLabel="Start voice call">
                 <Ionicons name="call" size={17} color="#10B981" />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerActionBtn}
-                onPress={() => Alert.alert('Initiate Video', 'Connecting direct WebRTC video stream...')}
+                onPress={() => {
+                  const callId = useCallStore.getState().startOutgoingCall('My Partner', true);
+                  signalingChannel.sendCallSignal({
+                    type: 'offer',
+                    callId,
+                    senderDeviceId: 'local-device',
+                    isVideo: true,
+                    timestamp: Date.now(),
+                  });
+                }}
                 accessibilityLabel="Start video call">
                 <Ionicons name="videocam" size={18} color="#38BDF8" />
               </TouchableOpacity>
@@ -264,6 +295,26 @@ export default function ChatScreen() {
             />
           </TouchableOpacity>
         </View>
+
+        {/* WebRTC In-Call HUD Modal */}
+        <CallModal
+          onHangupSignal={(callId) => {
+            signalingChannel.sendCallSignal({
+              type: 'hangup',
+              callId,
+              senderDeviceId: 'local-device',
+              timestamp: Date.now(),
+            });
+          }}
+          onAnswerSignal={(callId) => {
+            signalingChannel.sendCallSignal({
+              type: 'answer',
+              callId,
+              senderDeviceId: 'local-device',
+              timestamp: Date.now(),
+            });
+          }}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

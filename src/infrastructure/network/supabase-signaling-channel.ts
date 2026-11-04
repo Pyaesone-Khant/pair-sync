@@ -1,5 +1,9 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
-import { ISignalingPort, LocationTelemetryPayload } from '../../application/ports/signaling';
+import {
+  ISignalingPort,
+  LocationTelemetryPayload,
+  CallSignalPayload,
+} from '../../application/ports/signaling';
 import { CiphertextEnvelope } from '../../domain/messaging/ciphertext-envelope';
 
 export interface SupabaseSignalingConfig {
@@ -12,7 +16,7 @@ export interface SupabaseSignalingConfig {
  * Production implementation of ISignalingPort using Supabase Realtime Broadcast.
  * Acts as an untrusted blind relay forwarding ciphertext envelopes and ephemeral
  * telemetry without persisting plaintext or holding cryptographic keys.
- * Strictly adheres to ADR 0002, ADR 0004, and CONTEXT.md.
+ * Strictly adheres to ADR 0002, ADR 0004, ADR 0005, and CONTEXT.md.
  */
 export class SupabaseSignalingChannel implements ISignalingPort {
   private client: SupabaseClient | null = null;
@@ -22,6 +26,7 @@ export class SupabaseSignalingChannel implements ISignalingPort {
   private envelopeListeners: Set<(envelope: CiphertextEnvelope) => void> = new Set();
   private locationListeners: Set<(payload: LocationTelemetryPayload) => void> = new Set();
   private peerGazeListeners: Set<(isViewing: boolean) => void> = new Set();
+  private callSignalListeners: Set<(signal: CallSignalPayload) => void> = new Set();
 
   constructor(config?: SupabaseSignalingConfig) {
     if (config?.supabaseClient) {
@@ -95,6 +100,9 @@ export class SupabaseSignalingChannel implements ISignalingPort {
       })
       .on('broadcast', { event: 'peer_gaze' }, ({ payload }) => {
         this.peerGazeListeners.forEach((listener) => listener(Boolean(payload.isViewing)));
+      })
+      .on('broadcast', { event: 'call_signal' }, ({ payload }) => {
+        this.callSignalListeners.forEach((listener) => listener(payload));
       });
 
     channel.subscribe();
@@ -157,6 +165,22 @@ export class SupabaseSignalingChannel implements ISignalingPort {
     });
   }
 
+  /**
+   * Broadcasts a WebRTC P2P call signaling packet (offer, answer, ICE candidate, hangup).
+   * Adheres to ADR 0005.
+   */
+  public async sendCallSignal(signal: CallSignalPayload): Promise<void> {
+    if (!this.currentChannel) {
+      return;
+    }
+
+    await this.currentChannel.send({
+      type: 'broadcast',
+      event: 'call_signal',
+      payload: signal,
+    });
+  }
+
   public onEnvelopeReceived(callback: (envelope: CiphertextEnvelope) => void): () => void {
     this.envelopeListeners.add(callback);
     return () => this.envelopeListeners.delete(callback);
@@ -170,5 +194,10 @@ export class SupabaseSignalingChannel implements ISignalingPort {
   public onPeerGazeReceived(callback: (isViewing: boolean) => void): () => void {
     this.peerGazeListeners.add(callback);
     return () => this.peerGazeListeners.delete(callback);
+  }
+
+  public onCallSignalReceived(callback: (signal: CallSignalPayload) => void): () => void {
+    this.callSignalListeners.add(callback);
+    return () => this.callSignalListeners.delete(callback);
   }
 }

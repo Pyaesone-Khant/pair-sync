@@ -142,6 +142,41 @@ describe('SupabaseSignalingChannel (ADR 0002 Blind Relay & Realtime Broadcast)',
     });
   });
 
+  it('broadcasts and receives call signals over realtime channel', async () => {
+    const signaling = new SupabaseSignalingChannel({
+      supabaseClient: mockSupabaseClient,
+    });
+
+    const callSignalListener = vi.fn();
+    signaling.onCallSignalReceived(callSignalListener);
+
+    await signaling.joinPairRoom('pair-uuid-1234');
+
+    const offerSignal = {
+      type: 'offer' as const,
+      callId: 'call-123',
+      senderDeviceId: 'dev-alice',
+      sdp: 'v=0\r\no=alice...',
+      isVideo: false,
+      timestamp: 1700000005000,
+    };
+
+    await signaling.sendCallSignal(offerSignal);
+
+    expect(mockChannel.send).toHaveBeenCalledWith({
+      type: 'broadcast',
+      event: 'call_signal',
+      payload: offerSignal,
+    });
+
+    // Simulate incoming signal from peer
+    const signalHandlers = channelListeners['call_signal'];
+    expect(signalHandlers).toBeDefined();
+    signalHandlers[0]({ payload: offerSignal });
+
+    expect(callSignalListener).toHaveBeenCalledWith(offerSignal);
+  });
+
   it('cleans up channel and listeners on leavePairRoom', async () => {
     const signaling = new SupabaseSignalingChannel({
       supabaseClient: mockSupabaseClient,

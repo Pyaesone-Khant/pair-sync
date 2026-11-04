@@ -13,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocationStore } from '../presentation/stores/location-store';
 import { PartnerStatusCard } from '../presentation/components/PartnerStatusCard';
+import { CallModal } from '../presentation/components/CallModal';
+import { useCallStore } from '../presentation/stores/call-store';
 import { LocationTrackingStateMachine, LocationStateMode } from '../domain/location/location-state-machine';
 import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { HardwareLocationEngine } from '../infrastructure/location/hardware-location-engine';
@@ -102,6 +104,16 @@ export default function RadarScreen() {
       setPeerViewingMe(isViewing);
     });
 
+    const unsubscribeCall = signalingChannel.onCallSignalReceived((signal) => {
+      if (signal.type === 'offer') {
+        useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
+      } else if (signal.type === 'answer') {
+        useCallStore.getState().acceptCall();
+      } else if (signal.type === 'hangup' || signal.type === 'reject') {
+        useCallStore.getState().endCall();
+      }
+    });
+
     // 4. Start physical hardware GPS & Battery tracking engine
     const locationEngine = new HardwareLocationEngine({
       stateMachine,
@@ -127,6 +139,7 @@ export default function RadarScreen() {
       locationEngine.stop();
       unsubscribeLocation();
       unsubscribeGaze();
+      unsubscribeCall();
       signalingChannel.leavePairRoom();
     };
   }, [stateMachine, signalingChannel, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
@@ -382,8 +395,37 @@ export default function RadarScreen() {
         {/* Ambient Partner Status Card */}
         <PartnerStatusCard
           partnerName="My Partner"
-          onInitiateCall={() => alert('Initiating native WebRTC CallSession with CallKit...')}
+          onInitiateCall={() => {
+            const callId = useCallStore.getState().startOutgoingCall('My Partner', false);
+            signalingChannel.sendCallSignal({
+              type: 'offer',
+              callId,
+              senderDeviceId: 'local-device',
+              isVideo: false,
+              timestamp: Date.now(),
+            });
+          }}
           onOpenChat={() => router.push('/chat')}
+        />
+
+        {/* WebRTC In-Call HUD Modal */}
+        <CallModal
+          onHangupSignal={(callId) => {
+            signalingChannel.sendCallSignal({
+              type: 'hangup',
+              callId,
+              senderDeviceId: 'local-device',
+              timestamp: Date.now(),
+            });
+          }}
+          onAnswerSignal={(callId) => {
+            signalingChannel.sendCallSignal({
+              type: 'answer',
+              callId,
+              senderDeviceId: 'local-device',
+              timestamp: Date.now(),
+            });
+          }}
         />
       </View>
     </View>
