@@ -18,6 +18,10 @@ import { useCallStore } from '../presentation/stores/call-store';
 import { LocationTrackingStateMachine, LocationStateMode } from '../domain/location/location-state-machine';
 import { SupabaseSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { HardwareLocationEngine } from '../infrastructure/location/hardware-location-engine';
+import { BoundaryEvent } from '../domain/places/boundary-event';
+import { BoundaryEventService } from '../application/services/boundary-event-service';
+import { BoundaryEventBanner } from '../presentation/components/BoundaryEventBanner';
+import { getDatabaseClient } from '../infrastructure/database/database-client';
 
 const { width, height } = Dimensions.get('window');
 
@@ -34,6 +38,10 @@ export default function RadarScreen() {
   const mapRef = useRef<MapView | null>(null);
   const [stateMachine] = useState(() => new LocationTrackingStateMachine());
   const [currentMode, setCurrentMode] = useState<LocationStateMode>(LocationStateMode.Stationary);
+  const [latestBoundaryEvent, setLatestBoundaryEvent] = useState<BoundaryEvent | null>(null);
+  const [boundaryService] = useState(
+    () => new BoundaryEventService(getDatabaseClient().getRepositories().placeRepo)
+  );
 
   const myTelemetry = useLocationStore((state) => state.myTelemetry);
   const peerTelemetry = useLocationStore((state) => state.peerTelemetry);
@@ -85,7 +93,12 @@ export default function RadarScreen() {
     // 2. Connect to live Supabase Pair broadcast room
     signalingChannel.joinPairRoom('pair-primary');
 
-    // 3. Listen for incoming live peer location packets
+    // 3. Listen for autonomous geofence boundary events
+    const unsubscribeBoundary = boundaryService.onBoundaryEvent((event) => {
+      setLatestBoundaryEvent(event);
+    });
+
+    // 4. Listen for incoming live peer location packets
     const unsubscribeLocation = signalingChannel.onLocationReceived((payload) => {
       const motion =
         payload.motionActivity === 'Driving' || payload.motionActivity === 'Walking'
@@ -97,6 +110,11 @@ export default function RadarScreen() {
         batteryPercent: payload.batteryPercent ?? null,
         isCharging: Boolean(payload.isCharging),
         motionActivity: motion,
+      });
+
+      boundaryService.evaluateCoordinateChange('peer', {
+        latitude: payload.latitude,
+        longitude: payload.longitude,
       });
     });
 
@@ -114,7 +132,7 @@ export default function RadarScreen() {
       }
     });
 
-    // 4. Start physical hardware GPS & Battery tracking engine
+    // 5. Start physical hardware GPS & Battery tracking engine
     const locationEngine = new HardwareLocationEngine({
       stateMachine,
       signalingPort: signalingChannel,
@@ -130,6 +148,8 @@ export default function RadarScreen() {
           isCharging: Boolean(telemetry.isCharging),
           motionActivity: motion,
         });
+
+        boundaryService.evaluateCoordinateChange('me', telemetry.coordinate);
       },
     });
 
@@ -140,6 +160,7 @@ export default function RadarScreen() {
       unsubscribeLocation();
       unsubscribeGaze();
       unsubscribeCall();
+      unsubscribeBoundary();
       signalingChannel.leavePairRoom();
     };
   }, [stateMachine, signalingChannel, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
@@ -186,16 +207,27 @@ export default function RadarScreen() {
 
   const handleToggleMotion = () => {
     const isCurrentlyMoving = currentMode === LocationStateMode.Transit;
+    const nextMoving = !isCurrentlyMoving;
     stateMachine.onMotionActivityChanged({
-      isMoving: !isCurrentlyMoving,
+      isMoving: nextMoving,
       confidence: 'high',
     });
     const newMode = stateMachine.getCurrentMode();
     setCurrentMode(newMode);
 
-    updateMyTelemetry({
-      motionActivity: !isCurrentlyMoving ? 'Walking' : 'Stationary',
+    // If moving, simulate partner stepping into Home geofence (37.7749, -122.4194)
+    // If stopping, step out into transit (37.7850, -122.4150)
+    const newCoord = nextMoving
+      ? { latitude: 37.7749, longitude: -122.4194 } // Home center
+      : { latitude: 37.7850, longitude: -122.4150 }; // In transit
+    const newMotion = nextMoving ? 'Walking' : 'Stationary';
+
+    updatePeerTelemetry({
+      coordinate: newCoord,
+      motionActivity: newMotion,
     });
+
+    boundaryService.evaluateCoordinateChange('peer', newCoord);
   };
 
   const handleTogglePeerGaze = () => {
@@ -289,6 +321,12 @@ export default function RadarScreen() {
           </View>
         </Marker>
       </MapView>
+
+      {/* Autonomous Geofence Boundary Alert Banner */}
+      <BoundaryEventBanner
+        event={latestBoundaryEvent}
+        onDismiss={() => setLatestBoundaryEvent(null)}
+      />
 
       {/* Floating Top Header */}
       <SafeAreaView style={styles.topOverlayContainer}>
