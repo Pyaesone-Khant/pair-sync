@@ -39,6 +39,7 @@ interface DemoPlace {
 export default function RadarScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView | null>(null);
+  const hasInitiallyCentered = useRef(false);
   const [stateMachine] = useState(() => new LocationTrackingStateMachine());
   const [currentMode, setCurrentMode] = useState<LocationStateMode>(LocationStateMode.Stationary);
   const [latestBoundaryEvent, setLatestBoundaryEvent] = useState<BoundaryEvent | null>(null);
@@ -222,6 +223,22 @@ export default function RadarScreen() {
   const defaultCenter = { latitude: 16.8052, longitude: 96.1561 };
   const userCenter = myTelemetry.coordinate ?? defaultCenter;
 
+  // Automatically center on "You" (current user location) as soon as GPS coordinates are acquired
+  useEffect(() => {
+    if (myTelemetry.coordinate && mapRef.current && !hasInitiallyCentered.current) {
+      hasInitiallyCentered.current = true;
+      mapRef.current.animateToRegion(
+        {
+          latitude: myTelemetry.coordinate.latitude,
+          longitude: myTelemetry.coordinate.longitude,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
+        },
+        1000
+      );
+    }
+  }, [myTelemetry.coordinate]);
+
   // Smooth 60fps algorithmic coordinate interpolation (ADR 0007)
   const { coordinate: animatedPeerCoord } = useInterpolatedCoordinate(
     peerTelemetry.coordinate,
@@ -241,11 +258,14 @@ export default function RadarScreen() {
         loadingEnabled={true}
         loadingIndicatorColor="#38BDF8"
         loadingBackgroundColor="#0B0F17"
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+        showsCompass={true}
         initialRegion={{
           latitude: userCenter.latitude,
           longitude: userCenter.longitude,
-          latitudeDelta: 0.035,
-          longitudeDelta: 0.035,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
         }}>
         {/* Safe Places Geofence Circles & Center Markers */}
         {places.map((place) => (

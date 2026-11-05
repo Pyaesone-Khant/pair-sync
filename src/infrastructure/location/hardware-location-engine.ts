@@ -6,6 +6,14 @@ import { LocationStateMode, LocationTrackingStateMachine } from '../../domain/lo
 export interface ILocationModule {
   requestForegroundPermissionsAsync(): Promise<{ status: string }>;
   requestBackgroundPermissionsAsync(): Promise<{ status: string }>;
+  getLastKnownPositionAsync?(options?: Record<string, unknown>): Promise<{
+    coords: { latitude: number; longitude: number; speed: number | null };
+    timestamp: number;
+  } | null>;
+  getCurrentPositionAsync?(options?: Record<string, unknown>): Promise<{
+    coords: { latitude: number; longitude: number; speed: number | null };
+    timestamp: number;
+  }>;
   watchPositionAsync(
     options: { accuracy: number; timeInterval: number; distanceInterval: number },
     callback: (location: {
@@ -126,6 +134,36 @@ export class HardwareLocationEngine {
 
       const updateInterval = this.stateMachine.getUpdateIntervalSeconds() * 1000;
       const isHighAcc = this.stateMachine.isHighAccuracyGpsActive();
+
+      // Immediately obtain cached/last-known position for instantaneous map centering (<50ms)
+      if (typeof this.locationModule.getLastKnownPositionAsync === 'function') {
+        try {
+          const lastLoc = await this.locationModule.getLastKnownPositionAsync();
+          if (lastLoc) {
+            await this.handleCoordinateUpdate(lastLoc);
+          }
+        } catch {
+          // Non-blocking: proceed to active GPS fix
+        }
+      }
+
+      // Concurrently query current position to eliminate cold-start delay
+      if (typeof this.locationModule.getCurrentPositionAsync === 'function') {
+        this.locationModule
+          .getCurrentPositionAsync({
+            accuracy: isHighAcc
+              ? this.locationModule.Accuracy.High
+              : this.locationModule.Accuracy.Balanced,
+          })
+          .then(async (currentLoc) => {
+            if (currentLoc) {
+              await this.handleCoordinateUpdate(currentLoc);
+            }
+          })
+          .catch(() => {
+            // Ignored: watchPositionAsync will supply positions
+          });
+      }
 
       this.watchSubscription = await this.locationModule.watchPositionAsync(
         {
