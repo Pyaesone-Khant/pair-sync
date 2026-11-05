@@ -7,10 +7,12 @@ import * as Linking from 'expo-linking';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import PinpointScreen from './pinpoint';
 import { LoginScreen } from '../presentation/screens/LoginScreen';
 import { CallModal } from '../presentation/components/CallModal';
 import { useAuthStore } from '../presentation/stores/auth-store';
 import { useCallStore } from '../presentation/stores/call-store';
+import { usePinpointStore } from '../presentation/stores/pinpoint-store';
 import { getNotificationService } from '../infrastructure/notifications/expo-notification-service';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
 import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
@@ -23,6 +25,7 @@ SplashScreen.preventAutoHideAsync();
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { isAuthenticated, isInitialized, checkSession, setAccount } = useAuthStore();
+  const isPinpointOpen = usePinpointStore((state) => state.isOpen);
   const authService = getSupabaseAuthService();
 
   useEffect(() => {
@@ -203,6 +206,7 @@ export default function TabLayout() {
               });
             }}
           />
+          {isPinpointOpen && <PinpointScreen />}
         </>
       )}
     </ThemeProvider>

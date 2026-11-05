@@ -21,6 +21,7 @@ import MapView, { Marker, Circle } from 'react-native-maps';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Place } from '../domain/places/place';
 import { useLocationStore } from '../presentation/stores/location-store';
+import { usePinpointStore } from '../presentation/stores/pinpoint-store';
 import {
   PLACE_ICONS,
   PLACE_ICON_CATEGORIES,
@@ -111,13 +112,7 @@ export default function PlacesScreen() {
     });
   }, [places, peerTelemetry.coordinate]);
 
-  const fullscreenMapRef = useRef<MapView | null>(null);
-  const lastDeltaRef = useRef({
-    latitudeDelta: 0.008,
-    longitudeDelta: 0.008,
-  });
   const [modalVisible, setModalVisible] = useState(false);
-  const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
   const [categoryInput, setCategoryInput] = useState<'home' | 'work' | 'gym' | 'other'>('home');
@@ -128,6 +123,26 @@ export default function PlacesScreen() {
     latitude: 16.8052,
     longitude: 96.1561,
   });
+
+  const openPinpoint = usePinpointStore((state) => state.openPinpoint);
+
+  const handleOpenPinpoint = () => {
+    setModalVisible(false);
+    openPinpoint({
+      coordinate: targetCoord,
+      radiusMeters: radiusInput,
+      placeName: nameInput.trim() || undefined,
+      icon: selectedIcon,
+      onConfirm: (newCoord, newRadius) => {
+        setTargetCoord(newCoord);
+        setRadiusInput(newRadius);
+        setModalVisible(true);
+      },
+      onCancel: () => {
+        setModalVisible(true);
+      },
+    });
+  };
 
   const filteredIcons = useMemo(() => {
     if (selectedCategoryFilter === 'All') {
@@ -152,23 +167,12 @@ export default function PlacesScreen() {
     setSelectedCategoryFilter('All');
     setRadiusInput(100);
     setTargetCoord(myTelemetry.coordinate ?? { latitude: 16.8052, longitude: 96.1561 });
-    lastDeltaRef.current = { latitudeDelta: 0.008, longitudeDelta: 0.008 };
-    setIsMapExpanded(false);
     setModalVisible(true);
   };
 
   const handleUseCurrentLocation = () => {
     if (myTelemetry.coordinate) {
       setTargetCoord(myTelemetry.coordinate);
-      fullscreenMapRef.current?.animateToRegion(
-        {
-          latitude: myTelemetry.coordinate.latitude,
-          longitude: myTelemetry.coordinate.longitude,
-          latitudeDelta: lastDeltaRef.current.latitudeDelta,
-          longitudeDelta: lastDeltaRef.current.longitudeDelta,
-        },
-        500
-      );
     } else {
       Alert.alert('Location Pending', 'GPS coordinate is not yet acquired.');
     }
@@ -182,8 +186,6 @@ export default function PlacesScreen() {
     setSelectedCategoryFilter('All');
     setRadiusInput(place.radiusMeters);
     setTargetCoord({ latitude: place.latitude, longitude: place.longitude });
-    lastDeltaRef.current = { latitudeDelta: 0.008, longitudeDelta: 0.008 };
-    setIsMapExpanded(false);
     setModalVisible(true);
   };
 
@@ -263,217 +265,6 @@ export default function PlacesScreen() {
       ]
     );
   };
-
-  if (isMapExpanded) {
-    return (
-      <View style={styles.fullscreenMapContainer}>
-        <StatusBar barStyle="light-content" />
-
-        {/* Real Native Interactive Map at Root Level */}
-        <MapView
-          ref={fullscreenMapRef}
-          style={styles.fullscreenMapView}
-          userInterfaceStyle="dark"
-          initialRegion={{
-            latitude: targetCoord.latitude,
-            longitude: targetCoord.longitude,
-            latitudeDelta: lastDeltaRef.current.latitudeDelta,
-            longitudeDelta: lastDeltaRef.current.longitudeDelta,
-          }}
-          onRegionChangeComplete={(region) => {
-            lastDeltaRef.current = {
-              latitudeDelta: region.latitudeDelta,
-              longitudeDelta: region.longitudeDelta,
-            };
-          }}
-          onPress={(e) => {
-            if (e.nativeEvent.coordinate) {
-              setTargetCoord(e.nativeEvent.coordinate);
-            }
-          }}
-          onLongPress={(e) => {
-            if (e.nativeEvent.coordinate) {
-              setTargetCoord(e.nativeEvent.coordinate);
-            }
-          }}
-          scrollEnabled={true}
-          zoomEnabled={true}
-          pitchEnabled={true}
-          rotateEnabled={true}>
-          <Circle
-            center={targetCoord}
-            radius={radiusInput}
-            fillColor="rgba(56, 189, 248, 0.22)"
-            strokeColor="#38BDF8"
-            strokeWidth={2}
-          />
-          <Marker
-            coordinate={targetCoord}
-            draggable
-            pinColor="#38BDF8"
-            title="Safe Place Center"
-            description="Drag to adjust position"
-            onDragEnd={(e) => {
-              if (e.nativeEvent.coordinate) {
-                setTargetCoord(e.nativeEvent.coordinate);
-              }
-            }}
-          />
-        </MapView>
-
-        {/* Floating Zoom & Precision Controls (Right Edge) */}
-        <View style={styles.fullscreenZoomControls} pointerEvents="box-none">
-          <TouchableOpacity
-            style={styles.fullscreenZoomBtn}
-            onPress={() => {
-              const currentDelta = lastDeltaRef.current;
-              const newLatDelta = Math.max(0.001, currentDelta.latitudeDelta * 0.5);
-              const newLngDelta = Math.max(0.001, currentDelta.longitudeDelta * 0.5);
-              lastDeltaRef.current = { latitudeDelta: newLatDelta, longitudeDelta: newLngDelta };
-              fullscreenMapRef.current?.animateToRegion(
-                {
-                  latitude: targetCoord.latitude,
-                  longitude: targetCoord.longitude,
-                  latitudeDelta: newLatDelta,
-                  longitudeDelta: newLngDelta,
-                },
-                250
-              );
-            }}
-            activeOpacity={0.8}
-            accessibilityLabel="Zoom in map">
-            <Ionicons name="add" size={24} color="#F8FAFC" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.fullscreenZoomBtn}
-            onPress={() => {
-              const currentDelta = lastDeltaRef.current;
-              const newLatDelta = Math.min(2.0, currentDelta.latitudeDelta * 2.0);
-              const newLngDelta = Math.min(2.0, currentDelta.longitudeDelta * 2.0);
-              lastDeltaRef.current = { latitudeDelta: newLatDelta, longitudeDelta: newLngDelta };
-              fullscreenMapRef.current?.animateToRegion(
-                {
-                  latitude: targetCoord.latitude,
-                  longitude: targetCoord.longitude,
-                  latitudeDelta: newLatDelta,
-                  longitudeDelta: newLngDelta,
-                },
-                250
-              );
-            }}
-            activeOpacity={0.8}
-            accessibilityLabel="Zoom out map">
-            <Ionicons name="remove" size={24} color="#F8FAFC" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.fullscreenZoomBtn}
-            onPress={() => {
-              fullscreenMapRef.current?.animateToRegion(
-                {
-                  latitude: targetCoord.latitude,
-                  longitude: targetCoord.longitude,
-                  latitudeDelta: lastDeltaRef.current.latitudeDelta,
-                  longitudeDelta: lastDeltaRef.current.longitudeDelta,
-                },
-                300
-              );
-            }}
-            activeOpacity={0.8}
-            accessibilityLabel="Center on selected pin">
-            <Ionicons name="locate-outline" size={20} color="#38BDF8" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Floating Top Navigation Header */}
-        <View
-          style={[styles.fullscreenTopHeaderBar, { top: insets.top + 8 }]}
-          pointerEvents="box-none">
-          <TouchableOpacity
-            style={styles.fullscreenGlassCloseBtn}
-            onPress={() => setIsMapExpanded(false)}
-            activeOpacity={0.8}
-            accessibilityLabel="Close full screen map">
-            <Ionicons name="close" size={20} color="#F8FAFC" />
-          </TouchableOpacity>
-
-          <View style={styles.fullscreenHeaderCenter}>
-            <Text style={styles.fullscreenHeaderTitle}>Pinpoint Location</Text>
-            <Text style={styles.fullscreenHeaderSubtitle}>
-              {targetCoord.latitude.toFixed(4)}°, {targetCoord.longitude.toFixed(4)}°
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.fullscreenDoneBtn}
-            onPress={() => setIsMapExpanded(false)}
-            activeOpacity={0.8}
-            accessibilityLabel="Confirm location">
-            <Ionicons name="checkmark" size={16} color="#0B0F17" />
-            <Text style={styles.fullscreenDoneBtnText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Floating Bottom Precision Control Panel */}
-        <View style={[styles.fullscreenBottomCard, { bottom: insets.bottom + 12 }]}>
-          {/* Center on GPS button & gesture tip */}
-          <View style={styles.fullscreenLocateRow}>
-            <TouchableOpacity
-              style={styles.fullscreenLocateBtn}
-              onPress={handleUseCurrentLocation}
-              activeOpacity={0.8}>
-              <Ionicons name="locate" size={15} color="#38BDF8" />
-              <Text style={styles.fullscreenLocateBtnText}>Snap to My Current GPS</Text>
-            </TouchableOpacity>
-
-            <View style={styles.fullscreenHelpPill}>
-              <Ionicons name="finger-print-outline" size={13} color="#94A3B8" />
-              <Text style={styles.fullscreenHelpText}>Tap map or drag pin</Text>
-            </View>
-          </View>
-
-          {/* Radius selector */}
-          <View style={styles.fullscreenRadiusSection}>
-            <Text style={styles.fullscreenRadiusLabel}>
-              Geofence Radius: <Text style={styles.fullscreenRadiusHighlight}>{radiusInput} meters</Text>
-            </Text>
-            <View style={styles.fullscreenRadiusRow}>
-              {[50, 100, 150, 250, 500].map((r) => {
-                const isSelected = radiusInput === r;
-                return (
-                  <TouchableOpacity
-                    key={r}
-                    style={[
-                      styles.fullscreenRadiusChip,
-                      isSelected && styles.fullscreenRadiusChipActive,
-                    ]}
-                    onPress={() => setRadiusInput(r)}>
-                    <Text
-                      style={[
-                        styles.fullscreenRadiusChipText,
-                        isSelected && styles.fullscreenRadiusChipTextActive,
-                      ]}>
-                      {r}m
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Confirm button */}
-          <TouchableOpacity
-            style={styles.fullscreenConfirmBtn}
-            onPress={() => setIsMapExpanded(false)}
-            activeOpacity={0.85}>
-            <Ionicons name="checkmark-circle" size={18} color="#0B0F17" />
-            <Text style={styles.fullscreenConfirmBtnText}>Confirm Geofence Perimeter</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -616,7 +407,7 @@ export default function PlacesScreen() {
 
         {/* Add/Edit Safe Place Modal (Form View Only) */}
         <Modal
-          visible={modalVisible && !isMapExpanded}
+          visible={modalVisible}
           animationType="slide"
           transparent
           onRequestClose={() => setModalVisible(false)}>
@@ -645,7 +436,7 @@ export default function PlacesScreen() {
                   <TouchableOpacity
                     activeOpacity={0.85}
                     style={styles.modalMapWrapper}
-                    onPress={() => setIsMapExpanded(true)}
+                    onPress={handleOpenPinpoint}
                     accessibilityLabel="Tap to expand fullscreen map">
                     <MapView
                       style={styles.modalMap}
@@ -696,7 +487,7 @@ export default function PlacesScreen() {
                   {/* Open Fullscreen Precision Map Mode Button */}
                   <TouchableOpacity
                     style={styles.expandFullMapBtn}
-                    onPress={() => setIsMapExpanded(true)}
+                    onPress={handleOpenPinpoint}
                     activeOpacity={0.8}
                     accessibilityLabel="Open Full Screen Precision Map">
                     <Ionicons name="scan" size={16} color="#0B0F17" />
@@ -1433,118 +1224,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  fullscreenMapContainer: {
-    flex: 1,
-    backgroundColor: '#0B0F17',
-  },
-  fullscreenMapView: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  fullscreenZoomControls: {
-    position: 'absolute',
-    right: 16,
-    top: 130,
-    gap: 10,
-    zIndex: 10,
-  },
-  fullscreenZoomBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(21, 27, 38, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  fullscreenTopHeaderBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  fullscreenGlassCloseBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(21, 27, 38, 0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  fullscreenHeaderCenter: {
-    backgroundColor: 'rgba(21, 27, 38, 0.88)',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.6)',
-    alignItems: 'center',
-  },
-  fullscreenHeaderTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  fullscreenHeaderSubtitle: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  fullscreenDoneBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#38BDF8',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 18,
-    shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  fullscreenDoneBtnText: {
-    color: '#0B0F17',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  fullscreenBottomCard: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 10,
-    backgroundColor: 'rgba(21, 27, 38, 0.94)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#232B3A',
-    padding: 16,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 6,
-  },
   expandFullMapBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1562,98 +1241,6 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontSize: 13,
     fontWeight: '700',
-  },
-  fullscreenLocateRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  fullscreenLocateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#0B0F17',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  fullscreenLocateBtnText: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  fullscreenHelpPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  fullscreenHelpText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  fullscreenRadiusSection: {
-    gap: 6,
-  },
-  fullscreenRadiusLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  fullscreenRadiusHighlight: {
-    color: '#38BDF8',
-    fontWeight: '700',
-  },
-  fullscreenRadiusRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  fullscreenRadiusChip: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: '#0B0F17',
-    borderWidth: 1,
-    borderColor: '#334155',
-    alignItems: 'center',
-  },
-  fullscreenRadiusChipActive: {
-    backgroundColor: '#38BDF8',
-    borderColor: '#38BDF8',
-  },
-  fullscreenRadiusChipText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  fullscreenRadiusChipTextActive: {
-    color: '#0B0F17',
-  },
-  fullscreenConfirmBtn: {
-    backgroundColor: '#38BDF8',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  fullscreenConfirmBtnText: {
-    color: '#0B0F17',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: -0.2,
   },
   precisionMarker: {
     alignItems: 'center',

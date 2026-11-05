@@ -56,6 +56,8 @@ export default function AppTabs() {
           renderingMode="template"
         />
       </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="pinpoint" hidden />
     </NativeTabs>
   );
 }
