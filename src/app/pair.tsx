@@ -11,7 +11,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 import { QRCodeDisplay } from '../presentation/components/QRCodeDisplay';
 import {
@@ -34,6 +37,7 @@ export default function PairingScreen() {
   const [scanned, setScanned] = useState(false);
   const [pairUseCase, setPairUseCase] = useState<PairDeviceUseCase | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const refreshPayload = useCallback(async (showToast = false) => {
     if (!pairUseCase) return;
@@ -151,20 +155,140 @@ export default function PairingScreen() {
 
   const handleShareInviteLink = async () => {
     try {
-      const inviteUrl = pairingPayload
+      const link = pairingPayload
         ? `pairsync://pair?deviceId=${encodeURIComponent(
             pairingPayload.deviceId
           )}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${
             pairingPayload.timestamp
-          }`
+          }&nonce=${encodeURIComponent(pairingPayload.nonce)}&sig=${encodeURIComponent(
+            pairingPayload.signature
+          )}`
         : 'pairsync://pair/invite';
       await Share.share({
         title: 'PairSync Secure Peer Invite',
-        message: `Join my private 1-to-1 sync on PairSync: ${inviteUrl}`,
-        url: inviteUrl,
+        message: `Join my private 1-to-1 sync on PairSync: ${link}`,
+        url: link,
       });
     } catch (err) {
       console.warn('[PairingScreen] Share invite failed:', err);
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    try {
+      const link = pairingPayload
+        ? `pairsync://pair?deviceId=${encodeURIComponent(
+            pairingPayload.deviceId
+          )}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${
+            pairingPayload.timestamp
+          }&nonce=${encodeURIComponent(pairingPayload.nonce)}&sig=${encodeURIComponent(
+            pairingPayload.signature
+          )}`
+        : '';
+      if (!link) return;
+      await Clipboard.setStringAsync(link);
+      Alert.alert(
+        'Invite Link Copied!',
+        'Pairing invite link copied to clipboard. Send it to your partner via chat or email.'
+      );
+    } catch (err) {
+      console.warn('[PairingScreen] Copy invite link failed:', err);
+    }
+  };
+
+  const handleImportFromPhotos = async () => {
+    try {
+      setIsImporting(true);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const imageUri = result.assets[0].uri;
+      const scannedCodes = await scanFromURLAsync(imageUri, ['qr']);
+
+      if (!scannedCodes || scannedCodes.length === 0 || !scannedCodes[0]?.data) {
+        Alert.alert(
+          'No QR Code Detected',
+          'Could not find a readable QR code in the selected photo. Please make sure the screenshot or photo clearly displays your partner\'s PairSync QR code.'
+        );
+        return;
+      }
+
+      await handleBarcodeScanned({ data: scannedCodes[0].data });
+    } catch (err: unknown) {
+      console.warn('[PairingScreen] Photo import scan error:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to scan image';
+      Alert.alert('Photo Scan Failed', msg);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportFromFiles = async () => {
+    try {
+      setIsImporting(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const fileUri = result.assets[0].uri;
+      const scannedCodes = await scanFromURLAsync(fileUri, ['qr']);
+
+      if (!scannedCodes || scannedCodes.length === 0 || !scannedCodes[0]?.data) {
+        Alert.alert(
+          'No QR Code Detected',
+          'Could not find a readable QR code in the selected file. Please ensure the image contains a clear PairSync QR code.'
+        );
+        return;
+      }
+
+      await handleBarcodeScanned({ data: scannedCodes[0].data });
+    } catch (err: unknown) {
+      console.warn('[PairingScreen] File import scan error:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to scan file';
+      Alert.alert('File Scan Failed', msg);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      if (!text || text.trim().length === 0) {
+        Alert.alert('Clipboard Empty', 'No pairing link or code was found in your clipboard.');
+        return;
+      }
+
+      const trimmed = text.trim();
+      if (
+        !trimmed.includes('deviceId=') &&
+        !trimmed.startsWith('pairsync://') &&
+        !trimmed.startsWith('{')
+      ) {
+        Alert.alert(
+          'Invalid Pairing Content',
+          'The clipboard content does not look like a valid PairSync pairing link or payload.'
+        );
+        return;
+      }
+
+      await handleBarcodeScanned({ data: trimmed });
+    } catch (err: unknown) {
+      console.warn('[PairingScreen] Clipboard paste error:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to parse clipboard data';
+      Alert.alert('Paste Failed', msg);
     }
   };
 
@@ -365,13 +489,23 @@ export default function PairingScreen() {
                 </Text>
               </View>
 
-              {/* Remote Invite Button */}
-              <TouchableOpacity
-                style={styles.copyLinkBtn}
-                onPress={handleShareInviteLink}>
-                <Ionicons name="share-social-outline" size={16} color="#0B0F17" />
-                <Text style={styles.copyLinkText}>Share Secure Peer Invite Link</Text>
-              </TouchableOpacity>
+              {/* Remote Invite Buttons */}
+              <View style={styles.shareButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.copyLinkBtn}
+                  onPress={handleShareInviteLink}>
+                  <Ionicons name="share-social-outline" size={16} color="#0B0F17" />
+                  <Text style={styles.copyLinkText}>Share Invite Link</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.copySecondaryBtn}
+                  onPress={handleCopyInviteLink}
+                  activeOpacity={0.75}>
+                  <Ionicons name="copy-outline" size={16} color="#38BDF8" />
+                  <Text style={styles.copySecondaryBtnText}>Copy Link</Text>
+                </TouchableOpacity>
+              </View>
 
               {/* Unpair Action if Paired */}
               {isPaired && (
@@ -422,6 +556,53 @@ export default function PairingScreen() {
                     <Ionicons name="scan-outline" size={48} color="rgba(56, 189, 248, 0.5)" />
                   )}
                 </View>
+              </View>
+
+              {/* Remote Pairing Options (Photos, Files, Clipboard) */}
+              <View style={styles.remotePairingCard}>
+                <View style={styles.remoteHeaderRow}>
+                  <Ionicons name="cloud-download-outline" size={16} color="#38BDF8" />
+                  <Text style={styles.remoteTitle}>Remote Pairing (Not Together)</Text>
+                </View>
+                <Text style={styles.remoteSubtitle}>
+                  Import a shared QR screenshot from Photos/Files or paste a pairing link sent by your partner.
+                </Text>
+
+                <View style={styles.importButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.importBtn}
+                    onPress={handleImportFromPhotos}
+                    disabled={isImporting}
+                    activeOpacity={0.75}>
+                    <Ionicons name="images-outline" size={17} color="#38BDF8" />
+                    <Text style={styles.importBtnText}>Photos</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.importBtn}
+                    onPress={handleImportFromFiles}
+                    disabled={isImporting}
+                    activeOpacity={0.75}>
+                    <Ionicons name="folder-open-outline" size={17} color="#38BDF8" />
+                    <Text style={styles.importBtnText}>Files</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.importBtn}
+                    onPress={handlePasteFromClipboard}
+                    disabled={isImporting}
+                    activeOpacity={0.75}>
+                    <Ionicons name="clipboard-outline" size={17} color="#38BDF8" />
+                    <Text style={styles.importBtnText}>Paste</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isImporting && (
+                  <View style={styles.importingOverlay}>
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                    <Text style={styles.importingText}>Decoding QR code from image...</Text>
+                  </View>
+                )}
               </View>
 
               {isPaired ? (
@@ -657,13 +838,19 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     fontVariant: ['tabular-nums'],
   },
+  shareButtonsContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
   copyLinkBtn: {
+    flex: 1,
     backgroundColor: '#38BDF8',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    width: '100%',
+    gap: 6,
     paddingVertical: 13,
     borderRadius: 12,
     shadowColor: '#38BDF8',
@@ -673,7 +860,24 @@ const styles = StyleSheet.create({
   },
   copyLinkText: {
     color: '#0B0F17',
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  copySecondaryBtn: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  copySecondaryBtnText: {
+    color: '#38BDF8',
+    fontSize: 13,
     fontWeight: '700',
   },
   unpairBtn: {
@@ -844,5 +1048,69 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontSize: 14,
     fontWeight: '600',
+  },
+  remotePairingCard: {
+    width: '100%',
+    backgroundColor: '#151B26',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#232B3A',
+    marginBottom: 16,
+  },
+  remoteHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  remoteTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  remoteSubtitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 14,
+  },
+  importButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  importBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#1E293B',
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  importBtnText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  importingOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderRadius: 8,
+  },
+  importingText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

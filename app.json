@@ -22,6 +22,7 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "PairSync shares your live location and geofence arrival alerts exclusively with your paired peer.",
         "NSLocationWhenInUseUsageDescription": "PairSync requires location services to display your location on the map.",
         "NSCameraUsageDescription": "PairSync uses your camera to scan your peer's pairing QR code.",
+        "NSPhotoLibraryUsageDescription": "PairSync allows importing QR code screenshots or photos to pair with your partner remotely.",
         "NSMicrophoneUsageDescription": "PairSync requires microphone access for peer-to-peer voice and video calls."
       }
     },
