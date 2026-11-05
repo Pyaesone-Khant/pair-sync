@@ -7,8 +7,9 @@ import {
   StatusBar,
   TouchableOpacity,
   Dimensions,
+  Platform,
 } from 'react-native';
-import MapView, { Marker, Circle } from 'react-native-maps';
+import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocationStore } from '../presentation/stores/location-store';
@@ -234,8 +235,12 @@ export default function RadarScreen() {
       {/* Real Native Interactive Map */}
       <MapView
         ref={mapRef}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
         userInterfaceStyle="dark"
+        loadingEnabled={true}
+        loadingIndicatorColor="#38BDF8"
+        loadingBackgroundColor="#0B0F17"
         initialRegion={{
           latitude: userCenter.latitude,
           longitude: userCenter.longitude,
@@ -455,11 +460,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B0F17',
   },
   map: {
-    width,
-    height,
-    position: 'absolute',
-    top: 0,
-    left: 0,
+    ...StyleSheet.absoluteFill,
   },
   topOverlayContainer: {
     position: 'absolute',

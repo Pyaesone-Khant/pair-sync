@@ -16,8 +16,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Radar</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'location.north', selected: 'location.north.fill' }}
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          md={{ default: 'explore', selected: 'explore' }}
         />
       </NativeTabs.Trigger>
 
@@ -25,8 +24,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Places</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'shield', selected: 'shield.fill' }}
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          md={{ default: 'shield', selected: 'shield' }}
         />
       </NativeTabs.Trigger>
 
@@ -34,8 +32,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'bubble.left', selected: 'bubble.left.fill' }}
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          md={{ default: 'chat_bubble', selected: 'chat_bubble' }}
         />
       </NativeTabs.Trigger>
 
@@ -43,8 +40,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Pairing</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'qrcode', selected: 'qrcode' }}
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          md={{ default: 'qr_code', selected: 'qr_code' }}
         />
       </NativeTabs.Trigger>
 
@@ -52,12 +48,12 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }}
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          md={{ default: 'person', selected: 'person' }}
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="pinpoint" hidden />
+      <NativeTabs.Trigger name="auth/callback" hidden />
     </NativeTabs>
   );
 }
