@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   FlatList,
   TouchableOpacity,
   Modal,
@@ -15,7 +14,7 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
@@ -267,7 +266,7 @@ export default function PlacesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>

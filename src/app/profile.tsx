@@ -3,13 +3,13 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Alert,
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../presentation/stores/auth-store';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
@@ -71,7 +71,7 @@ export default function ProfileScreen() {
   const initials = account?.getInitials() || 'PS';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
       <View style={styles.container}>
         {/* Consistent Top Header */}

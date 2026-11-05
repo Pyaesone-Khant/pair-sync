@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   TextInput,
   TouchableOpacity,
   FlatList,
@@ -11,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { DesignTokens } from '../constants/theme';
@@ -222,7 +222,7 @@ export default function ChatScreen() {
 
   if (!activePair) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
         <View style={styles.header}>
           <Text style={styles.title}>Encrypted Chat</Text>
         </View>
@@ -247,7 +247,7 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

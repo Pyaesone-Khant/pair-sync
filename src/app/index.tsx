@@ -3,12 +3,12 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   Dimensions,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -345,7 +345,7 @@ export default function RadarScreen() {
       />
 
       {/* Floating Top Header */}
-      <SafeAreaView style={styles.topOverlayContainer} pointerEvents="box-none">
+      <SafeAreaView edges={['top']} style={styles.topOverlayContainer} pointerEvents="box-none">
         <View style={styles.topHeader} pointerEvents="box-none">
           <View style={styles.brandFloatingBadge}>
             <Text style={styles.brandTitle}>PairSync</Text>

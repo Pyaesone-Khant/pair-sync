@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme, View, ActivityIndicator, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -177,39 +178,41 @@ export default function TabLayout() {
   }, [isAuthenticated]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      {!isInitialized ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={DesignTokens.colors.accentCyan} />
-        </View>
-      ) : !isAuthenticated ? (
-        <LoginScreen />
-      ) : (
-        <>
-          <AppTabs />
-          <CallModal
-            onHangupSignal={(callId) => {
-              getSignalingChannel().sendCallSignal({
-                type: 'hangup',
-                callId,
-                senderDeviceId: 'local-device',
-                timestamp: Date.now(),
-              });
-            }}
-            onAnswerSignal={(callId) => {
-              getSignalingChannel().sendCallSignal({
-                type: 'answer',
-                callId,
-                senderDeviceId: 'local-device',
-                timestamp: Date.now(),
-              });
-            }}
-          />
-          {isPinpointOpen && <PinpointScreen />}
-        </>
-      )}
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <AnimatedSplashOverlay />
+        {!isInitialized ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={DesignTokens.colors.accentCyan} />
+          </View>
+        ) : !isAuthenticated ? (
+          <LoginScreen />
+        ) : (
+          <>
+            <AppTabs />
+            <CallModal
+              onHangupSignal={(callId) => {
+                getSignalingChannel().sendCallSignal({
+                  type: 'hangup',
+                  callId,
+                  senderDeviceId: 'local-device',
+                  timestamp: Date.now(),
+                });
+              }}
+              onAnswerSignal={(callId) => {
+                getSignalingChannel().sendCallSignal({
+                  type: 'answer',
+                  callId,
+                  senderDeviceId: 'local-device',
+                  timestamp: Date.now(),
+                });
+              }}
+            />
+            {isPinpointOpen && <PinpointScreen />}
+          </>
+        )}
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 

@@ -3,13 +3,13 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   Alert,
   ScrollView,
   Share,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { QRCodeDisplay } from '../presentation/components/QRCodeDisplay';
@@ -163,7 +163,7 @@ export default function PairingScreen() {
     : '';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.container}>
         {/* Consistent Top Header */}
         <View style={styles.header}>

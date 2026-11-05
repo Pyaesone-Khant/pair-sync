@@ -4,12 +4,12 @@ import {
   View,
   Text,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   ActivityIndicator,
   Alert,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
 import { getSupabaseAuthService } from '../../infrastructure/auth/supabase-auth-service';
