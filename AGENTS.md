@@ -80,3 +80,79 @@ To ensure a clean, bisectable git history:
 
 * **Glossary**: Always consult and respect the project terminology defined in [`CONTEXT.md`](./CONTEXT.md). Use exact canonical terms (`Pair`, `Peer`, `Stationary State`, `Transit State`, `Ciphertext Envelope`, etc.).
 * **ADRs**: Never violate architectural boundaries established in [`docs/adr/`](./docs/adr/). If an architectural change is required, discuss and record an ADR before proceeding.
+
+---
+
+## 6. Physical Device Deployment Playbook (iOS & Android)
+
+For fast recognition by future agents, follow this exact playbook when testing, building, and installing PairSync on physical hardware.
+
+### Target Hardware Registry
+
+| Device | Model / Identifier | Platform | Bundle / Package ID | Connection Tool |
+| :--- | :--- | :--- | :--- | :--- |
+| **iPhone PK** | iPhone 14 Pro Max (`iPhone15,3`)<br>UDID: `00008120-00110C1E0293C01E`<br>Team ID: `D776JM53A3` | iOS Physical | `com.pairsync.app` | `xcrun devicectl` |
+| **Xiaomi Mi 9** | Xiaomi Mi 9 (`cepheus` / `MI_9`)<br>Serial: `b53d42e6` | Android 10/11 Physical | `com.pairsync.app` | `adb` |
+
+### Why Standalone Release Builds Are Mandatory
+
+> [!IMPORTANT]
+> **Always compile and install standalone Release builds for both physical devices:**
+> 1. **Android Splash Screen Hang**: Debug APKs (`app-debug.apk`) do not bundle pre-compiled Hermes JavaScript bytecode; they wait indefinitely on a WebSocket connection to a local Metro bundler on port 8081. Release builds (`assembleRelease`) pre-compile all modules into Hermes bytecode (`index.android.bundle`), enabling immediate (<200ms) standalone boot.
+> 2. **iOS C++ Prebuilt Linker Mismatch**: In Debug mode, `React-Core-prebuilt` expects non-inlined constructors for `facebook::react::Sealable`, causing undefined symbol linker errors. Release configuration (`-configuration Release`) completely inlines `Sealable`, bypassing linker errors and packing offline assets (`main.jsbundle`).
+
+### Android (Xiaomi Mi 9) Build & Install Steps
+
+```bash
+# 1. Verify device is connected and authorized
+adb devices
+# Expected output: b53d42e6    device
+
+# 2. Build standalone Release APK (Hermes bytecode pre-bundled)
+cd android && ./gradlew --no-daemon assembleRelease
+# Output artifact: android/app/build/outputs/apk/release/app-release.apk
+
+# 3. Stream-install Release APK onto Xiaomi Mi 9
+adb -s b53d42e6 install -r android/app/build/outputs/apk/release/app-release.apk
+
+# 4. Launch PairSync MainActivity
+adb -s b53d42e6 shell am start -n com.pairsync.app/.MainActivity
+
+# 5. Diagnostic: Capture live screen verification
+adb -s b53d42e6 shell screencap -p /sdcard/screen.png && adb -s b53d42e6 pull /sdcard/screen.png screen.png
+```
+
+### iOS (iPhone PK) Build & Install Steps
+
+```bash
+# 1. Verify iPhone PK connection status
+xcrun devicectl list devices
+# Expected: PK | 00008120-00110C1E0293C01E | available (paired)
+
+# 2. Compile standalone Release binary with Apple Development provisioning
+cd ios && xcodebuild \
+  -workspace PairSync.xcworkspace \
+  -scheme PairSync \
+  -configuration Release \
+  -destination 'id=00008120-00110C1E0293C01E' \
+  -allowProvisioningUpdates
+
+# 3. Install binary onto physical iPhone PK
+xcrun devicectl device install app \
+  --device 00008120-00110C1E0293C01E \
+  ~/Library/Developer/Xcode/DerivedData/PairSync-amxbmllkhlcwzgdmklwytvsvjkbb/Build/Products/Release-iphoneos/PairSync.app
+
+# 4. Launch application process on iPhone PK
+xcrun devicectl device process launch \
+  --device 00008120-00110C1E0293C01E \
+  com.pairsync.app
+```
+
+### Agent Sandbox & Environment Mandates
+
+* Commands interacting with physical USB/Wi-Fi devices (`adb`, `xcrun devicectl`) and macOS Keychain code signing (`xcodebuild`) must be executed with **`BypassSandbox: true`**.
+* If ADB encounters port conflicts (`Address already in use`), reset the server via:
+  ```bash
+  adb kill-server && adb start-server && adb devices
+  ```
+
