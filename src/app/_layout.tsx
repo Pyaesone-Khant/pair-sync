@@ -13,6 +13,7 @@ import { LoginScreen } from '../presentation/screens/LoginScreen';
 import { CallModal } from '../presentation/components/CallModal';
 import { useAuthStore } from '../presentation/stores/auth-store';
 import { useCallStore } from '../presentation/stores/call-store';
+import { usePairStore } from '../presentation/stores/pair-store';
 import { usePinpointStore } from '../presentation/stores/pinpoint-store';
 import { getNotificationService } from '../infrastructure/notifications/expo-notification-service';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
@@ -104,19 +105,16 @@ export default function TabLayout() {
           const peerDeviceId = params.get('deviceId');
           const peerPublicKey = params.get('publicKey');
           if (peerDeviceId && peerPublicKey) {
-            const { getDatabaseClient } = await import('../infrastructure/database/database-client');
             const { Pair } = await import('../domain/pairing/pair');
             const { getOrCreateLocalDeviceId } = await import('../infrastructure/security/device-key-manager');
             const localDeviceId = await getOrCreateLocalDeviceId();
-            const pairRepo = getDatabaseClient().getRepositories().pairRepo;
             const newPair = new Pair({
               id: `pair-${Date.now()}`,
               localDeviceId,
               peerDeviceId,
               peerPublicKey,
             });
-            newPair.activate();
-            await pairRepo.savePair(newPair);
+            await usePairStore.getState().setPair(newPair);
             console.log('[TabLayout] Peer paired successfully via deep link invite!');
           }
         } catch (err) {
@@ -140,21 +138,29 @@ export default function TabLayout() {
     };
   }, []);
 
-  // Global WebRTC P2P Call Signaling Listener (ADR 0005)
+  // Global Pair & WebRTC P2P Call Signaling Listener (ADR 0001, ADR 0005, ADR 0006)
+  const activePair = usePairStore((state) => state.activePair);
+
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      usePairStore.getState().reset();
+      return;
+    }
+
+    // Load active pair from local encrypted SQLite on login
+    usePairStore.getState().loadPair();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !activePair) return;
 
     let callUnsub: (() => void) | null = null;
     let roomJoined: string | null = null;
 
     async function initSignaling() {
-      const { getDatabaseClient } = await import('../infrastructure/database/database-client');
-      const activePair = await getDatabaseClient().getRepositories().pairRepo.getActivePair();
-      if (!activePair) return;
-
       const signaling = getSignalingChannel();
-      roomJoined = activePair.getPairRoomId();
-      signaling.joinPairRoom(roomJoined);
+      roomJoined = activePair!.getPairRoomId();
+      await signaling.joinPairRoom(roomJoined);
 
       callUnsub = signaling.onCallSignalReceived((signal) => {
         if (signal.type === 'offer') {
@@ -171,11 +177,8 @@ export default function TabLayout() {
 
     return () => {
       if (callUnsub) callUnsub();
-      if (roomJoined) {
-        getSignalingChannel().leavePairRoom();
-      }
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activePair]);
 
   return (
     <SafeAreaProvider>

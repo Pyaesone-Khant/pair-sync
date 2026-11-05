@@ -24,6 +24,7 @@ import {
 import { PairDeviceUseCase, PairingPayload } from '../application/use-cases/pair-device.usecase';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Pair } from '../domain/pairing/pair';
+import { usePairStore } from '../presentation/stores/pair-store';
 import { computeSafetyNumber } from '../presentation/utils/safety-number';
 import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 
@@ -31,8 +32,8 @@ export default function PairingScreen() {
   const [activeTab, setActiveTab] = useState<'myCode' | 'scanner'>('myCode');
   const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(null);
   const [safetyNumber, setSafetyNumber] = useState<string>('');
-  const [activePair, setActivePair] = useState<Pair | null>(null);
-  const [isPaired, setIsPaired] = useState(false);
+  const { activePair, setPair, unpair } = usePairStore();
+  const isPaired = Boolean(activePair);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [pairUseCase, setPairUseCase] = useState<PairDeviceUseCase | null>(null);
@@ -77,12 +78,8 @@ export default function PairingScreen() {
         if (!mounted) return;
         setPairUseCase(useCase);
 
-        // Check if device already has an active pair bond in SQLite
-        const currentPair = await pairRepo.getActivePair();
-        if (mounted && currentPair) {
-          setActivePair(currentPair);
-          setIsPaired(true);
-        }
+        // Check if device already has an active pair bond in SQLite & Zustand
+        const currentPair = await usePairStore.getState().loadPair();
 
         // Generate real cryptographic payload
         const payload = await useCase.generatePairingPayload();
@@ -111,6 +108,7 @@ export default function PairingScreen() {
   // Auto-refresh payload when returning to screen if it has aged > 5 minutes
   useFocusEffect(
     useCallback(() => {
+      usePairStore.getState().loadPair();
       if (pairingPayload && Date.now() - pairingPayload.timestamp > 5 * 60 * 1000) {
         refreshPayload(false);
       }
@@ -128,10 +126,7 @@ export default function PairingScreen() {
       async (counterpartyPayloadString) => {
         try {
           const verifiedPair = await pairUseCase.processScannedPayload(counterpartyPayloadString);
-          const pairRepo = getDatabaseClient().getRepositories().pairRepo;
-          const savedPair = await pairRepo.getActivePair();
-          setActivePair(savedPair ?? verifiedPair);
-          setIsPaired(true);
+          await setPair(verifiedPair);
 
           if (pairingPayload.publicKey && verifiedPair.peerPublicKey) {
             const combined = [pairingPayload.publicKey, verifiedPair.peerPublicKey].sort().join(':');
@@ -151,7 +146,7 @@ export default function PairingScreen() {
     return () => {
       unsubscribe();
     };
-  }, [isPaired, pairUseCase, pairingPayload]);
+  }, [isPaired, pairUseCase, pairingPayload, setPair]);
 
   const handleShareInviteLink = async () => {
     try {
@@ -298,10 +293,7 @@ export default function PairingScreen() {
 
     try {
       const verifiedPair = await pairUseCase.processScannedPayload(data);
-      const pairRepo = getDatabaseClient().getRepositories().pairRepo;
-      const savedPair = await pairRepo.getActivePair();
-      setActivePair(savedPair ?? verifiedPair);
-      setIsPaired(true);
+      await setPair(verifiedPair);
 
       // Symmetrically update safety number from combined keys
       if (pairingPayload?.publicKey && verifiedPair.peerPublicKey) {
@@ -344,13 +336,7 @@ export default function PairingScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const pairRepo = getDatabaseClient().getRepositories().pairRepo;
-              const current = await pairRepo.getActivePair();
-              if (current) {
-                await pairRepo.deletePair(current.id);
-              }
-              setActivePair(null);
-              setIsPaired(false);
+              await unpair();
               setScanned(false);
               if (pairingPayload?.publicKey) {
                 setSafetyNumber(computeSafetyNumber(pairingPayload.publicKey));

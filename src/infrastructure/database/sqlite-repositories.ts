@@ -26,6 +26,7 @@ export class SqliteDatabaseAdapter implements ISqliteExecutor {
   constructor(private readonly engine: any) {}
 
   public exec(sql: string): void {
+    if (!this.engine) return;
     if (typeof this.engine.exec === 'function') {
       this.engine.exec(sql);
     } else if (typeof this.engine.execSync === 'function') {
@@ -34,6 +35,7 @@ export class SqliteDatabaseAdapter implements ISqliteExecutor {
   }
 
   public run(sql: string, params: unknown[] = []): void {
+    if (!this.engine) return;
     if (typeof this.engine.prepare === 'function') {
       const stmt = this.engine.prepare(sql);
       stmt.run(...params);
@@ -43,6 +45,7 @@ export class SqliteDatabaseAdapter implements ISqliteExecutor {
   }
 
   public all<T>(sql: string, params: unknown[] = []): T[] {
+    if (!this.engine) return [];
     if (typeof this.engine.prepare === 'function') {
       const stmt = this.engine.prepare(sql);
       return stmt.all(...params) as T[];
@@ -53,6 +56,7 @@ export class SqliteDatabaseAdapter implements ISqliteExecutor {
   }
 
   public get<T>(sql: string, params: unknown[] = []): T | null {
+    if (!this.engine) return null;
     if (typeof this.engine.prepare === 'function') {
       const stmt = this.engine.prepare(sql);
       const res = stmt.get(...params);

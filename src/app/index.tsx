@@ -23,6 +23,7 @@ import { BoundaryEventService } from '../application/services/boundary-event-ser
 import { BoundaryEventBanner } from '../presentation/components/BoundaryEventBanner';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { useInterpolatedCoordinate } from '../presentation/hooks/useInterpolatedCoordinate';
+import { usePairStore } from '../presentation/stores/pair-store';
 import { Pair } from '../domain/pairing/pair';
 
 const { width, height } = Dimensions.get('window');
@@ -47,7 +48,7 @@ export default function RadarScreen() {
     () => new BoundaryEventService(getDatabaseClient().getRepositories().placeRepo)
   );
 
-  const [activePair, setActivePair] = useState<Pair | null>(null);
+  const { activePair, loadPair } = usePairStore();
   const [places, setPlaces] = useState<DemoPlace[]>([]);
 
   const myTelemetry = useLocationStore((state) => state.myTelemetry);
@@ -59,12 +60,14 @@ export default function RadarScreen() {
   // Initialize live Supabase blind relay channel
   const [signalingChannel] = useState(() => getSignalingChannel());
 
-  // Dynamically load places from local SQLite database and refresh on tab focus
+  // Dynamically load active pair & places from local SQLite and refresh on tab focus
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
-      async function syncPlaces() {
+
+      async function syncData() {
         try {
+          await loadPair();
           const stored = await getDatabaseClient().getRepositories().placeRepo.getAllPlaces();
           if (mounted) {
             setPlaces(
@@ -78,65 +81,82 @@ export default function RadarScreen() {
               }))
             );
           }
+
+          // Broadcast live viewing state and immediate location ping to partner
+          const signaling = getSignalingChannel();
+          await signaling.sendPeerGaze(true).catch(() => {});
+
+          const currentTelem = useLocationStore.getState().myTelemetry;
+          if (currentTelem.coordinate) {
+            await signaling.broadcastLocation({
+              latitude: currentTelem.coordinate.latitude,
+              longitude: currentTelem.coordinate.longitude,
+              batteryPercent: currentTelem.batteryPercent,
+              isCharging: currentTelem.isCharging,
+              motionActivity: currentTelem.motionActivity,
+              timestamp: Date.now(),
+            }).catch(() => {});
+          }
         } catch (err) {
-          console.warn('[RadarScreen] Failed to load places from SQLite:', err);
+          console.warn('[RadarScreen] Failed to sync data on focus:', err);
         }
       }
-      syncPlaces();
+
+      syncData();
+
       return () => {
         mounted = false;
+        getSignalingChannel().sendPeerGaze(false).catch(() => {});
       };
-    }, [])
+    }, [loadPair])
   );
 
   useEffect(() => {
-    let mounted = true;
-    let roomJoined: string | null = null;
     let unsubscribeLocation: (() => void) | null = null;
     let unsubscribeGaze: (() => void) | null = null;
 
-    async function initPairAndSignaling() {
-      try {
-        const pair = await getDatabaseClient().getRepositories().pairRepo.getActivePair();
-        if (!mounted) return;
+    if (activePair) {
+      const roomJoined = activePair.getPairRoomId();
+      signalingChannel.joinPairRoom(roomJoined);
 
-        if (pair) {
-          setActivePair(pair);
-          roomJoined = pair.getPairRoomId();
-          signalingChannel.joinPairRoom(roomJoined);
+      // Listen for incoming live peer location packets
+      unsubscribeLocation = signalingChannel.onLocationReceived((payload) => {
+        const motion =
+          payload.motionActivity === 'Driving' || payload.motionActivity === 'Walking'
+            ? payload.motionActivity
+            : 'Stationary';
 
-          // Listen for incoming live peer location packets
-          unsubscribeLocation = signalingChannel.onLocationReceived((payload) => {
-            const motion =
-              payload.motionActivity === 'Driving' || payload.motionActivity === 'Walking'
-                ? payload.motionActivity
-                : 'Stationary';
+        updatePeerTelemetry({
+          coordinate: { latitude: payload.latitude, longitude: payload.longitude },
+          batteryPercent: payload.batteryPercent ?? null,
+          isCharging: Boolean(payload.isCharging),
+          motionActivity: motion,
+        });
 
-            updatePeerTelemetry({
-              coordinate: { latitude: payload.latitude, longitude: payload.longitude },
-              batteryPercent: payload.batteryPercent ?? null,
-              isCharging: Boolean(payload.isCharging),
-              motionActivity: motion,
-            });
+        boundaryService.evaluateCoordinateChange('peer', {
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+        });
+      });
 
-            boundaryService.evaluateCoordinateChange('peer', {
-              latitude: payload.latitude,
-              longitude: payload.longitude,
-            });
-          });
-
-          unsubscribeGaze = signalingChannel.onPeerGazeReceived((isViewing) => {
-            setPeerViewingMe(isViewing);
-          });
-        } else {
-          setActivePair(null);
+      // When peer views our location, immediately respond with current telemetry
+      unsubscribeGaze = signalingChannel.onPeerGazeReceived((isViewing) => {
+        setPeerViewingMe(isViewing);
+        if (isViewing) {
+          const currentTelem = useLocationStore.getState().myTelemetry;
+          if (currentTelem.coordinate) {
+            signalingChannel.broadcastLocation({
+              latitude: currentTelem.coordinate.latitude,
+              longitude: currentTelem.coordinate.longitude,
+              batteryPercent: currentTelem.batteryPercent,
+              isCharging: currentTelem.isCharging,
+              motionActivity: currentTelem.motionActivity,
+              timestamp: Date.now(),
+            }).catch(() => {});
+          }
         }
-      } catch (err) {
-        console.warn('[RadarScreen] Error initializing pair bond:', err);
-      }
+      });
     }
-
-    initPairAndSignaling();
 
     // Listen for autonomous geofence boundary events
     const unsubscribeBoundary = boundaryService.onBoundaryEvent((event) => {
@@ -167,14 +187,12 @@ export default function RadarScreen() {
     locationEngine.start();
 
     return () => {
-      mounted = false;
       locationEngine.stop();
       if (unsubscribeLocation) unsubscribeLocation();
       if (unsubscribeGaze) unsubscribeGaze();
       unsubscribeBoundary();
-      if (roomJoined) signalingChannel.leavePairRoom();
     };
-  }, [stateMachine, signalingChannel, boundaryService, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
+  }, [activePair, stateMachine, signalingChannel, boundaryService, updateMyTelemetry, updatePeerTelemetry, setPeerViewingMe]);
 
   const fitBothInView = () => {
     if (!mapRef.current) return;

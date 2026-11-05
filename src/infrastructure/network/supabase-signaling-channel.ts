@@ -248,15 +248,21 @@ export class SupabaseSignalingChannel implements ISignalingPort {
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         try {
-          await channel.send({
-            type: 'broadcast',
-            event: 'handshake',
-            payload: { payloadString },
-          });
+          const sendPacket = async () => {
+            await channel.send({
+              type: 'broadcast',
+              event: 'handshake',
+              payload: { payloadString },
+            });
+          };
+          // Send 3 bursts across 1 second to ensure delivery over cellular/WiFi latency
+          await sendPacket();
+          setTimeout(() => sendPacket().catch(() => {}), 350);
+          setTimeout(() => sendPacket().catch(() => {}), 850);
         } catch (err) {
           console.warn('[SupabaseSignalingChannel] Failed to send pairing handshake:', err);
         } finally {
-          setTimeout(() => channel.unsubscribe(), 2000);
+          setTimeout(() => channel.unsubscribe(), 2500);
         }
       }
     });

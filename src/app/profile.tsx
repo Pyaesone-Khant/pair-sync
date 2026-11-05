@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../presentation/stores/auth-store';
+import { usePairStore } from '../presentation/stores/pair-store';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
-import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { getOrCreateLocalDeviceId } from '../infrastructure/security/device-key-manager';
 import { DesignTokens } from '../constants/theme';
 
@@ -25,29 +26,30 @@ import { DesignTokens } from '../constants/theme';
  */
 export default function ProfileScreen() {
   const { account, isLoading, signOut } = useAuthStore();
-  const [totalPairedCount, setTotalPairedCount] = useState<number>(0);
+  const { pairCount, loadPair } = usePairStore();
   const [deviceId, setDeviceId] = useState<string>('...');
   const authService = getSupabaseAuthService();
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadPairedStats() {
-      try {
-        const count = await getDatabaseClient().getRepositories().pairRepo.getPairCount();
-        const id = await getOrCreateLocalDeviceId();
-        if (mounted) {
-          setTotalPairedCount(count);
-          setDeviceId(id);
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      async function loadPairedStats() {
+        try {
+          await loadPair();
+          const id = await getOrCreateLocalDeviceId();
+          if (mounted) {
+            setDeviceId(id);
+          }
+        } catch (err) {
+          console.warn('[ProfileScreen] Failed to load pair count:', err);
         }
-      } catch (err) {
-        console.warn('[ProfileScreen] Failed to load pair count:', err);
       }
-    }
-    loadPairedStats();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      loadPairedStats();
+      return () => {
+        mounted = false;
+      };
+    }, [loadPair])
+  );
 
   const handleSignOut = () => {
     Alert.alert(
@@ -129,7 +131,7 @@ export default function ProfileScreen() {
               <Text style={styles.metricLabel}>Total Paired Devices</Text>
               <View style={styles.metricBadge}>
                 <Text style={styles.metricBadgeText}>
-                  {totalPairedCount} Active Pair{totalPairedCount === 1 ? '' : 's'}
+                  {pairCount} Active Pair{pairCount === 1 ? '' : 's'}
                 </Text>
               </View>
             </View>

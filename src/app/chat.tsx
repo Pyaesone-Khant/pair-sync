@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { DesignTokens } from '../constants/theme';
 import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { CiphertextEnvelope } from '../domain/messaging/ciphertext-envelope';
 import { useCallStore } from '../presentation/stores/call-store';
 import { useLocationStore } from '../presentation/stores/location-store';
+import { usePairStore } from '../presentation/stores/pair-store';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Pair } from '../domain/pairing/pair';
 import { SendMessageUseCase } from '../application/use-cases/send-message.usecase';
@@ -35,105 +36,110 @@ export default function ChatScreen() {
   const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [signalingChannel] = useState(() => getSignalingChannel());
-  const [activePair, setActivePair] = useState<Pair | null>(null);
+  const { activePair, loadPair } = usePairStore();
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [sendUseCase, setSendUseCase] = useState<SendMessageUseCase | null>(null);
   const [receiveUseCase, setReceiveUseCase] = useState<ReceiveMessageUseCase | null>(null);
 
+  // Sync active pair & historical encrypted messages from SQLite on tab focus
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      async function syncChatOnFocus() {
+        try {
+          const pair = await loadPair();
+          if (!mounted) return;
+          if (!pair) {
+            setMessages([]);
+            return;
+          }
+
+          const { messageRepo } = getDatabaseClient().getRepositories();
+          const storedEnvelopes = await messageRepo.getRecentEnvelopes(50);
+          if (mounted && storedEnvelopes.length > 0) {
+            const mappedMessages: LocalChatMessage[] = [];
+            for (const env of storedEnvelopes) {
+              const isMe = env.senderDeviceId === pair.localDeviceId;
+              let plaintext = env.ciphertext;
+              if (plaintext.startsWith('plain:')) {
+                plaintext = plaintext.replace('plain:', '');
+              }
+              mappedMessages.push({
+                id: env.id,
+                sender: isMe ? 'me' : 'partner',
+                text: plaintext,
+                timestamp: new Date(env.timestamp).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+                isEncrypted: true,
+              });
+            }
+            setMessages(mappedMessages);
+          }
+        } catch (err) {
+          console.warn('[ChatScreen] Error syncing chat on focus:', err);
+        }
+      }
+
+      syncChatOnFocus();
+
+      return () => {
+        mounted = false;
+      };
+    }, [loadPair])
+  );
+
   useEffect(() => {
-    let mounted = true;
-    let roomJoined: string | null = null;
     let unsubscribeEnvelope: (() => void) | null = null;
 
-    async function initChat() {
-      try {
-        const { pairRepo, messageRepo } = getDatabaseClient().getRepositories();
+    if (activePair) {
+      const { pairRepo, messageRepo } = getDatabaseClient().getRepositories();
+      const sender = new SendMessageUseCase(pairRepo, messageRepo, signalingChannel);
+      const receiver = new ReceiveMessageUseCase(pairRepo, messageRepo);
+      setSendUseCase(sender);
+      setReceiveUseCase(receiver);
 
-        const pair = await pairRepo.getActivePair();
-        if (!mounted) return;
+      // Join real deterministic pair signaling room
+      const roomJoined = activePair.getPairRoomId();
+      signalingChannel.joinPairRoom(roomJoined);
 
-        if (!pair) {
-          setActivePair(null);
-          setMessages([]);
-          return;
+      unsubscribeEnvelope = signalingChannel.onEnvelopeReceived(async (envelope) => {
+        let incomingText = envelope.ciphertext;
+        if (incomingText.startsWith('plain:')) {
+          incomingText = incomingText.replace('plain:', '');
         }
 
-        setActivePair(pair);
+        const incomingMessage: LocalChatMessage = {
+          id: envelope.id,
+          sender: 'partner',
+          text: incomingText,
+          timestamp: new Date(envelope.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          isEncrypted: true,
+        };
 
-        const sender = new SendMessageUseCase(pairRepo, messageRepo, signalingChannel);
-        const receiver = new ReceiveMessageUseCase(pairRepo, messageRepo);
-        setSendUseCase(sender);
-        setReceiveUseCase(receiver);
+        setMessages((prev) => [...prev, incomingMessage]);
 
-        // Load historical encrypted messages from local SQLite store
-        const storedEnvelopes = await messageRepo.getRecentEnvelopes(50);
-        if (mounted && storedEnvelopes.length > 0) {
-          const mappedMessages: LocalChatMessage[] = [];
-          for (const env of storedEnvelopes) {
-            const isMe = env.senderDeviceId === pair.localDeviceId;
-            let plaintext = env.ciphertext;
-            if (plaintext.startsWith('plain:')) {
-              plaintext = plaintext.replace('plain:', '');
-            }
-            mappedMessages.push({
-              id: env.id,
-              sender: isMe ? 'me' : 'partner',
-              text: plaintext,
-              timestamp: new Date(env.timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-              isEncrypted: true,
-            });
-          }
-          setMessages(mappedMessages);
-        } else if (mounted) {
-          setMessages([]);
+        // Persist to local SQLite store
+        try {
+          await messageRepo.saveEnvelope(envelope, 'incoming');
+        } catch (err) {
+          console.warn('[ChatScreen] Failed to store incoming envelope:', err);
         }
-
-        // Join real deterministic pair signaling room
-        roomJoined = pair.getPairRoomId();
-        signalingChannel.joinPairRoom(roomJoined);
-
-        unsubscribeEnvelope = signalingChannel.onEnvelopeReceived(async (envelope) => {
-          let incomingText = envelope.ciphertext;
-          if (incomingText.startsWith('plain:')) {
-            incomingText = incomingText.replace('plain:', '');
-          }
-
-          const incomingMessage: LocalChatMessage = {
-            id: envelope.id,
-            sender: 'partner',
-            text: incomingText,
-            timestamp: new Date(envelope.timestamp).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-            isEncrypted: true,
-          };
-
-          setMessages((prev) => [...prev, incomingMessage]);
-
-          // Persist to local SQLite store
-          try {
-            await messageRepo.saveEnvelope(envelope, 'incoming');
-          } catch (err) {
-            console.warn('[ChatScreen] Failed to store incoming envelope:', err);
-          }
-        });
-      } catch (err) {
-        console.warn('[ChatScreen] Initialization error:', err);
-      }
+      });
+    } else {
+      setSendUseCase(null);
+      setReceiveUseCase(null);
+      setMessages([]);
     }
 
-    initChat();
-
     return () => {
-      mounted = false;
       if (unsubscribeEnvelope) unsubscribeEnvelope();
-      if (roomJoined) signalingChannel.leavePairRoom();
     };
-  }, [signalingChannel]);
+  }, [activePair, signalingChannel]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !activePair) return;

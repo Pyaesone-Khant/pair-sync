@@ -40,6 +40,18 @@ export class DatabaseClient {
       } catch {
         // Non-expo environment or test fallback
       }
+
+      if (!engine) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { DatabaseSync } = require('node:sqlite');
+          if (typeof DatabaseSync === 'function') {
+            engine = new DatabaseSync(':memory:');
+          }
+        } catch {
+          // Fallback if node:sqlite is not available
+        }
+      }
     }
 
     this.executor = new SqliteDatabaseAdapter(engine);
