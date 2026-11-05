@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,8 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Keyboard,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { DesignTokens } from '../constants/theme';
@@ -32,14 +34,39 @@ interface LocalChatMessage {
   isEncrypted: boolean;
 }
 
+/**
+ * End-to-End Encrypted 1-to-1 Direct Messaging Screen.
+ * Implements Vercel composition design patterns, responsive safe area insets,
+ * and adaptive keyboard avoidance for seamless ergonomics above the bottom navigation bar.
+ * Strictly adheres to ADR 0002, ADR 0004, and frontend-design guidelines.
+ */
 export default function ChatScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const flatListRef = useRef<FlatList<LocalChatMessage>>(null);
   const [inputText, setInputText] = useState('');
   const [signalingChannel] = useState(() => getSignalingChannel());
   const { activePair, loadPair } = usePairStore();
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [sendUseCase, setSendUseCase] = useState<SendMessageUseCase | null>(null);
   const [receiveUseCase, setReceiveUseCase] = useState<ReceiveMessageUseCase | null>(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  // Monitor keyboard appearance dynamically to adjust composer bottom clearance
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Sync active pair & historical encrypted messages from SQLite on tab focus
   useFocusEffect(
@@ -90,6 +117,7 @@ export default function ChatScreen() {
     }, [loadPair])
   );
 
+  // Maintain signaling channel and incoming message stream
   useEffect(() => {
     let unsubscribeEnvelope: (() => void) | null = null;
 
@@ -140,6 +168,15 @@ export default function ChatScreen() {
       if (unsubscribeEnvelope) unsubscribeEnvelope();
     };
   }, [activePair, signalingChannel]);
+
+  // Auto-scroll to latest message on message receipt or send
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    }
+  }, [messages.length]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !activePair) return;
@@ -226,19 +263,27 @@ export default function ChatScreen() {
     }
   };
 
+  // Compute adaptive bottom clearance above the bottom navigation tab bar
+  const composerBottomPadding = isKeyboardVisible
+    ? 10
+    : Platform.OS === 'ios'
+    ? Math.max(insets.bottom + 52, 88)
+    : Math.max(insets.bottom + 60, 84);
+
   if (!activePair) {
     return (
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <StatusBar barStyle="light-content" />
         <View style={styles.header}>
           <Text style={styles.title}>Encrypted Chat</Text>
         </View>
-        <View style={styles.emptyContainer}>
+        <View style={[styles.emptyContainer, { paddingBottom: insets.bottom + 80 }]}>
           <View style={styles.emptyIconBadge}>
             <Ionicons name="chatbubbles-outline" size={38} color="#38BDF8" />
           </View>
           <Text style={styles.emptyTitle}>No Paired Partner</Text>
           <Text style={styles.emptySubtitle}>
-            Pair with your partner to start an encrypted, peer-to-peer conversation with zero cloud storage.
+            Pair with your partner using hardware QR to enable end-to-end encrypted messaging with zero cloud storage.
           </Text>
           <TouchableOpacity
             style={styles.pairNowBtn}
@@ -254,9 +299,11 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <StatusBar barStyle="light-content" />
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
         {/* Consistent Top Header */}
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
@@ -267,6 +314,10 @@ export default function ChatScreen() {
               </View>
               <View style={styles.titleContainer}>
                 <Text style={styles.title}>Partner</Text>
+                <View style={styles.encryptionBadgeRow}>
+                  <Ionicons name="lock-closed" size={11} color="#10B981" />
+                  <Text style={styles.encryptionBadgeText}>E2EE Secured</Text>
+                </View>
               </View>
             </View>
 
@@ -310,16 +361,19 @@ export default function ChatScreen() {
 
         {/* Message Thread */}
         <FlatList
+          ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messageList}
+          contentContainerStyle={[styles.messageList, { paddingBottom: 16 }]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyThreadContainer}>
-              <Ionicons name="shield-checkmark-outline" size={32} color="#10B981" />
-              <Text style={styles.emptyThreadTitle}>Encrypted 1-to-1 Channel</Text>
+              <View style={styles.emptyShieldBadge}>
+                <Ionicons name="shield-checkmark" size={26} color="#10B981" />
+              </View>
+              <Text style={styles.emptyThreadTitle}>Zero-Knowledge Direct Link</Text>
               <Text style={styles.emptyThreadSubtitle}>
-                Messages are end-to-end encrypted and routed directly to your partner device.
+                Messages are encrypted on-device with your partner's 256-bit public key. Nothing is stored on any cloud server.
               </Text>
             </View>
           }
@@ -349,7 +403,7 @@ export default function ChatScreen() {
                       <Ionicons
                         name="lock-closed"
                         size={10}
-                        color={isMe ? 'rgba(255, 255, 255, 0.7)' : '#64748B'}
+                        color={isMe ? 'rgba(255, 255, 255, 0.75)' : '#64748B'}
                       />
                     )}
                   </View>
@@ -360,12 +414,13 @@ export default function ChatScreen() {
         />
 
         {/* Composer Input Bar */}
-        <View style={styles.composerContainer}>
+        <View style={[styles.composerContainer, { paddingBottom: composerBottomPadding }]}>
           <TouchableOpacity
             style={styles.pingLocationBtn}
             onPress={handleShareLocationPing}
+            activeOpacity={0.75}
             accessibilityLabel="Share live location ping">
-            <Ionicons name="location-outline" size={19} color="#38BDF8" />
+            <Ionicons name="location-outline" size={20} color="#38BDF8" />
           </TouchableOpacity>
 
           <TextInput
@@ -374,6 +429,10 @@ export default function ChatScreen() {
             placeholderTextColor="#64748B"
             value={inputText}
             onChangeText={setInputText}
+            multiline={false}
+            maxLength={1000}
+            returnKeyType="send"
+            onSubmitEditing={handleSendMessage}
           />
 
           <TouchableOpacity
@@ -383,11 +442,12 @@ export default function ChatScreen() {
             ]}
             onPress={handleSendMessage}
             disabled={!inputText.trim()}
+            activeOpacity={0.8}
             accessibilityLabel="Send encrypted message">
             <Ionicons
               name="arrow-up"
-              size={18}
-              color={inputText.trim().length > 0 ? '#0B0F17' : '#64748B'}
+              size={19}
+              color={inputText.trim().length > 0 ? '#0B0F17' : '#475569'}
             />
           </TouchableOpacity>
         </View>
@@ -403,12 +463,15 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingBottom: 70,
+    backgroundColor: '#0B0F17',
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+    backgroundColor: '#0B0F17',
   },
   headerTitleRow: {
     flexDirection: 'row',
@@ -422,9 +485,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   partnerAvatarCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#1E293B',
     borderWidth: 1.5,
     borderColor: '#38BDF8',
@@ -434,18 +497,18 @@ const styles = StyleSheet.create({
   },
   partnerAvatarText: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   onlineDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#10B981',
     position: 'absolute',
     bottom: -1,
     right: -1,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: '#0B0F17',
   },
   titleContainer: {
@@ -453,9 +516,21 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#F8FAFC',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
+  },
+  encryptionBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  encryptionBadgeText: {
+    color: '#10B981',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   headerActionGroup: {
     flexDirection: 'row',
@@ -463,9 +538,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerActionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#151B26',
     borderWidth: 1,
     borderColor: '#232B3A',
@@ -492,15 +567,15 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: '#F8FAFC',
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
   emptySubtitle: {
     color: '#94A3B8',
-    fontSize: 13,
+    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 21,
   },
   pairNowBtn: {
     flexDirection: 'row',
@@ -520,25 +595,37 @@ const styles = StyleSheet.create({
   emptyThreadContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
-    gap: 10,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  emptyShieldBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyThreadTitle: {
     color: '#F8FAFC',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
+    letterSpacing: -0.2,
   },
   emptyThreadSubtitle: {
     color: '#64748B',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 17,
+    lineHeight: 19,
+    maxWidth: 280,
   },
   messageList: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
+    paddingTop: 16,
+    gap: 12,
     flexGrow: 1,
   },
   messageBubbleWrapper: {
@@ -552,14 +639,16 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '78%',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 8,
-    borderRadius: 16,
+    maxWidth: '80%',
+    paddingHorizontal: 15,
+    paddingTop: 11,
+    paddingBottom: 9,
+    borderRadius: 18,
   },
   myMessageBubble: {
     backgroundColor: '#0284C7',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
     borderBottomRightRadius: 4,
   },
   partnerMessageBubble: {
@@ -570,21 +659,22 @@ const styles = StyleSheet.create({
   },
   messageText: {
     color: '#F8FAFC',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 21,
   },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 4,
-    marginTop: 4,
+    marginTop: 5,
   },
   timestampText: {
-    fontSize: 10,
+    fontSize: 11,
+    fontWeight: '500',
   },
   myTimestampText: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.75)',
   },
   partnerTimestampText: {
     color: '#64748B',
@@ -592,18 +682,20 @@ const styles = StyleSheet.create({
   composerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#151B26',
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    backgroundColor: '#111827',
     borderTopWidth: 1,
-    borderTopColor: '#232B3A',
+    borderTopColor: '#1E293B',
     gap: 8,
   },
   pingLocationBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -611,23 +703,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0B0F17',
     color: '#F8FAFC',
-    fontSize: 14,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    fontSize: 15,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
     maxHeight: 100,
+    minHeight: 40,
     borderWidth: 1,
-    borderColor: '#232B3A',
+    borderColor: '#1E293B',
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonActive: {
     backgroundColor: '#38BDF8',
+    borderColor: '#38BDF8',
   },
 });
