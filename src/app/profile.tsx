@@ -183,26 +183,26 @@ export default function ProfileScreen() {
               <Text style={styles.metricValue}>PairSync 1.0.0</Text>
             </View>
           </View>
-        </ScrollView>
 
-        {/* Sticky Log Out Action Bar at the Bottom */}
-        <View style={styles.stickyBottomBar}>
-          <TouchableOpacity
-            style={styles.signOutBtn}
-            onPress={handleSignOut}
-            disabled={isLoading}
-            activeOpacity={0.8}
-            accessibilityLabel="Log Out">
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#EF4444" />
-            ) : (
-              <>
-                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-                <Text style={styles.signOutBtnText}>Log Out</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+          {/* Log Out Action Button inside scroll view */}
+          {account && (
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              onPress={handleSignOut}
+              disabled={isLoading}
+              activeOpacity={0.8}
+              accessibilityLabel="Log Out">
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <>
+                  <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+                  <Text style={styles.signOutBtnText}>Log Out</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 100, // Padding to avoid sticky bottom overlap
+    paddingBottom: 120, // Plenty of breathing room above navigation bar
     gap: 16,
   },
   profileHeroCard: {
@@ -419,23 +419,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.04)',
     marginVertical: 10,
   },
-  stickyBottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#0B0F17',
-    borderTopWidth: 1,
-    borderTopColor: '#1E293B',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 28, // Respect home indicator
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
   signOutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -446,6 +429,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
+    marginTop: 8,
   },
   signOutBtnText: {
     fontSize: 15,
