@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocationStore } from '../presentation/stores/location-store';
 import { PartnerStatusCard } from '../presentation/components/PartnerStatusCard';
@@ -57,35 +57,35 @@ export default function RadarScreen() {
   // Initialize live Supabase blind relay channel
   const [signalingChannel] = useState(() => getSignalingChannel());
 
-  // Load places dynamically from local SQLite database
-  useEffect(() => {
-    let mounted = true;
-    async function syncPlaces() {
-      try {
-        const stored = await getDatabaseClient().getRepositories().placeRepo.getAllPlaces();
-        if (mounted && stored.length > 0) {
-          setPlaces(
-            stored.map((p) => ({
-              id: p.id,
-              name: p.name,
-              latitude: p.coordinate.latitude,
-              longitude: p.coordinate.longitude,
-              radiusMeters: p.radiusMeters,
-              icon: p.icon,
-            }))
-          );
-        } else if (mounted) {
-          setPlaces([]);
+  // Dynamically load places from local SQLite database and refresh on tab focus
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      async function syncPlaces() {
+        try {
+          const stored = await getDatabaseClient().getRepositories().placeRepo.getAllPlaces();
+          if (mounted) {
+            setPlaces(
+              stored.map((p) => ({
+                id: p.id,
+                name: p.name,
+                latitude: p.coordinate.latitude,
+                longitude: p.coordinate.longitude,
+                radiusMeters: p.radiusMeters,
+                icon: p.icon,
+              }))
+            );
+          }
+        } catch (err) {
+          console.warn('[RadarScreen] Failed to load places from SQLite:', err);
         }
-      } catch (err) {
-        console.warn('[RadarScreen] Failed to load places from SQLite:', err);
       }
-    }
-    syncPlaces();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      syncPlaces();
+      return () => {
+        mounted = false;
+      };
+    }, [])
+  );
 
   useEffect(() => {
     let mounted = true;

@@ -344,8 +344,10 @@ export default function PlacesScreen() {
               {/* Card Meta Row */}
               <View style={styles.cardMetaRow}>
                 <View style={styles.eventInfoRow}>
-                  <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                  <Text style={styles.lastEventText}>{item.lastEvent}</Text>
+                  <Ionicons name="pricetag-outline" size={12} color="#64748B" />
+                  <Text style={styles.categoryBadgeText}>
+                    {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+                  </Text>
                 </View>
                 <View style={styles.coordInfoRow}>
                   <Ionicons name="compass-outline" size={12} color="#64748B" />
@@ -836,6 +838,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  categoryBadgeText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   lastEventText: {
     color: '#94A3B8',
