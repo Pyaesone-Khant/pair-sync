@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useFocusEffect } from 'expo-router';
 import { QRCodeDisplay } from '../presentation/components/QRCodeDisplay';
 import {
   getDeviceKeyManager,
@@ -20,6 +21,8 @@ import {
 import { PairDeviceUseCase, PairingPayload } from '../application/use-cases/pair-device.usecase';
 import { getDatabaseClient } from '../infrastructure/database/database-client';
 import { Pair } from '../domain/pairing/pair';
+import { computeSafetyNumber } from '../presentation/utils/safety-number';
+import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 
 export default function PairingScreen() {
   const [activeTab, setActiveTab] = useState<'myCode' | 'scanner'>('myCode');
@@ -30,6 +33,32 @@ export default function PairingScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [pairUseCase, setPairUseCase] = useState<PairDeviceUseCase | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshPayload = useCallback(async (showToast = false) => {
+    if (!pairUseCase) return;
+    try {
+      setIsRefreshing(true);
+      const payload = await pairUseCase.generatePairingPayload();
+      setPairingPayload(payload);
+
+      const currentPair = await getDatabaseClient().getRepositories().pairRepo.getActivePair();
+      if (currentPair?.peerPublicKey) {
+        const combined = [payload.publicKey, currentPair.peerPublicKey].sort().join(':');
+        setSafetyNumber(computeSafetyNumber(combined));
+      } else {
+        setSafetyNumber(computeSafetyNumber(payload.publicKey));
+      }
+
+      if (showToast) {
+        Alert.alert('QR Code Refreshed', 'Fresh cryptographic payload generated. Valid for 15 minutes.');
+      }
+    } catch (err) {
+      console.warn('[PairingScreen] Failed to refresh payload:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [pairUseCase]);
 
   useEffect(() => {
     let mounted = true;
@@ -56,17 +85,12 @@ export default function PairingScreen() {
         if (!mounted) return;
         setPairingPayload(payload);
 
-        // Deterministic cryptographic safety number formatted from public key
-        if (payload.publicKey) {
-          let hash = 0;
-          for (let i = 0; i < payload.publicKey.length; i++) {
-            hash = (hash * 31 + payload.publicKey.charCodeAt(i)) >>> 0;
-          }
-          const d1 = String(1000 + (hash % 9000));
-          const d2 = String(1000 + ((hash >> 4) % 9000));
-          const d3 = String(1000 + ((hash >> 8) % 9000));
-          const d4 = String(1000 + ((hash >> 12) % 9000));
-          setSafetyNumber(`${d1} • ${d2} • ${d3} • ${d4}`);
+        // Deterministic cryptographic safety number (Signal-style, no negative numbers)
+        if (currentPair?.peerPublicKey) {
+          const combined = [payload.publicKey, currentPair.peerPublicKey].sort().join(':');
+          setSafetyNumber(computeSafetyNumber(combined));
+        } else if (payload.publicKey) {
+          setSafetyNumber(computeSafetyNumber(payload.publicKey));
         }
       } catch (err) {
         console.warn('[PairingScreen] Error initializing cryptographic keys:', err);
@@ -79,6 +103,51 @@ export default function PairingScreen() {
       mounted = false;
     };
   }, []);
+
+  // Auto-refresh payload when returning to screen if it has aged > 5 minutes
+  useFocusEffect(
+    useCallback(() => {
+      if (pairingPayload && Date.now() - pairingPayload.timestamp > 5 * 60 * 1000) {
+        refreshPayload(false);
+      }
+    }, [pairingPayload, refreshPayload])
+  );
+
+  // Listen for pairing handshake broadcast from counterparty (ADR 0001/0006)
+  // Enables instant pairing without needing both devices to scan each other!
+  useEffect(() => {
+    if (isPaired || !pairUseCase || !pairingPayload) return;
+
+    const signaling = getSignalingChannel();
+    const unsubscribe = signaling.listenForPairingHandshake(
+      pairingPayload.deviceId,
+      async (counterpartyPayloadString) => {
+        try {
+          const verifiedPair = await pairUseCase.processScannedPayload(counterpartyPayloadString);
+          const pairRepo = getDatabaseClient().getRepositories().pairRepo;
+          const savedPair = await pairRepo.getActivePair();
+          setActivePair(savedPair ?? verifiedPair);
+          setIsPaired(true);
+
+          if (pairingPayload.publicKey && verifiedPair.peerPublicKey) {
+            const combined = [pairingPayload.publicKey, verifiedPair.peerPublicKey].sort().join(':');
+            setSafetyNumber(computeSafetyNumber(combined));
+          }
+
+          Alert.alert(
+            'Partner Scanned Your QR Code!',
+            'Pair bond established successfully. Real-time location and messaging are now live!'
+          );
+        } catch (err) {
+          console.warn('[PairingScreen] Failed to process incoming handshake:', err);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isPaired, pairUseCase, pairingPayload]);
 
   const handleShareInviteLink = async () => {
     try {
@@ -104,11 +173,26 @@ export default function PairingScreen() {
     setScanned(true);
 
     try {
-      await pairUseCase.processScannedPayload(data);
+      const verifiedPair = await pairUseCase.processScannedPayload(data);
       const pairRepo = getDatabaseClient().getRepositories().pairRepo;
-      const verifiedPair = await pairRepo.getActivePair();
-      setActivePair(verifiedPair);
+      const savedPair = await pairRepo.getActivePair();
+      setActivePair(savedPair ?? verifiedPair);
       setIsPaired(true);
+
+      // Symmetrically update safety number from combined keys
+      if (pairingPayload?.publicKey && verifiedPair.peerPublicKey) {
+        const combined = [pairingPayload.publicKey, verifiedPair.peerPublicKey].sort().join(':');
+        setSafetyNumber(computeSafetyNumber(combined));
+      }
+
+      // Seamlessly notify counterparty via Realtime so their phone also activates immediately!
+      if (pairingPayload) {
+        const signaling = getSignalingChannel();
+        await signaling.sendPairingHandshake(
+          verifiedPair.peerDeviceId,
+          JSON.stringify(pairingPayload)
+        );
+      }
 
       Alert.alert(
         'Hardware Pairing Verified',
@@ -144,6 +228,9 @@ export default function PairingScreen() {
               setActivePair(null);
               setIsPaired(false);
               setScanned(false);
+              if (pairingPayload?.publicKey) {
+                setSafetyNumber(computeSafetyNumber(pairingPayload.publicKey));
+              }
               Alert.alert('Device Unpaired', 'You are ready to pair with a new partner.');
             } catch (err) {
               console.warn('[PairingScreen] Unpair failed:', err);
@@ -159,7 +246,9 @@ export default function PairingScreen() {
         pairingPayload.deviceId
       )}&publicKey=${encodeURIComponent(pairingPayload.publicKey)}&timestamp=${
         pairingPayload.timestamp
-      }`
+      }&nonce=${encodeURIComponent(pairingPayload.nonce)}&sig=${encodeURIComponent(
+        pairingPayload.signature
+      )}`
     : '';
 
   return (
@@ -245,7 +334,24 @@ export default function PairingScreen() {
                     <ActivityIndicator size="large" color="#38BDF8" />
                   )}
                 </View>
-                <Text style={styles.qrLabel}>Pairing QR Code</Text>
+                <View style={styles.qrFooterRow}>
+                  <Text style={styles.qrLabel}>Pairing QR Code</Text>
+                  <TouchableOpacity
+                    style={styles.refreshBtn}
+                    onPress={() => refreshPayload(true)}
+                    disabled={isRefreshing}
+                    activeOpacity={0.7}>
+                    <Ionicons
+                      name="refresh-outline"
+                      size={14}
+                      color="#38BDF8"
+                    />
+                    <Text style={styles.refreshBtnText}>
+                      {isRefreshing ? 'Refreshing...' : 'Refresh QR'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.qrExpiryHint}>Fresh payload • Valid for 15 minutes</Text>
               </View>
 
               {/* Cryptographic Safety Number */}
@@ -488,8 +594,37 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 16,
     fontWeight: '700',
-    marginTop: 8,
     letterSpacing: -0.3,
+  },
+  qrFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  refreshBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  qrExpiryHint: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'center',
   },
   safetyCard: {
     backgroundColor: '#151B26',

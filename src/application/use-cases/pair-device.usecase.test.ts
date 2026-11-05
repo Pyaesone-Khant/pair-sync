@@ -109,11 +109,11 @@ describe('PairDeviceUseCase (ADR 0001, ADR 0006 & Pairing Ceremony)', () => {
     ).rejects.toThrow('Cannot establish Pair with self');
   });
 
-  it('rejects expired pairing payload older than 5 minutes', async () => {
+  it('rejects expired pairing payload older than 15 minutes', async () => {
     const alicePayload = await aliceUseCase.generatePairingPayload();
 
-    // Set timestamp to 10 minutes ago
-    alicePayload.timestamp = Date.now() - 10 * 60 * 1000;
+    // Set timestamp to 20 minutes ago
+    alicePayload.timestamp = Date.now() - 20 * 60 * 1000;
 
     await expect(
       bobUseCase.processScannedPayload(JSON.stringify(alicePayload))

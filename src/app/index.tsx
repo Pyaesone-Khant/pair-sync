@@ -558,11 +558,10 @@ const styles = StyleSheet.create({
   },
   bottomOverlay: {
     position: 'absolute',
-    bottom: 104,
+    bottom: Platform.OS === 'ios' ? 96 : 16,
     left: 16,
     right: 16,
     gap: 8,
-    paddingBottom: 4,
   },
   batteryEngineCard: {
     backgroundColor: 'rgba(21, 27, 38, 0.92)',

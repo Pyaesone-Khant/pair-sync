@@ -208,6 +208,59 @@ export class SupabaseSignalingChannel implements ISignalingPort {
     this.callSignalListeners.add(callback);
     return () => this.callSignalListeners.delete(callback);
   }
+
+  /**
+   * Listens for an incoming pairing handshake request targeting this device ID.
+   * Enables seamless instant pairing when counterparty scans our QR code (ADR 0001/0006).
+   */
+  public listenForPairingHandshake(
+    localDeviceId: string,
+    onHandshake: (payloadString: string) => void
+  ): () => void {
+    if (!this.client) return () => {};
+    const topic = `pairsync:handshake:${localDeviceId}`;
+    const channel = this.client.channel(topic, {
+      config: { broadcast: { ack: false, self: false } },
+    });
+    channel.on('broadcast', { event: 'handshake' }, ({ payload }) => {
+      if (payload?.payloadString) {
+        onHandshake(payload.payloadString);
+      }
+    });
+    channel.subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }
+
+  /**
+   * Broadcasts our pairing payload to counterparty's handshake topic upon scanning their QR.
+   */
+  public async sendPairingHandshake(
+    targetDeviceId: string,
+    payloadString: string
+  ): Promise<void> {
+    if (!this.client) return;
+    const topic = `pairsync:handshake:${targetDeviceId}`;
+    const channel = this.client.channel(topic, {
+      config: { broadcast: { ack: false, self: false } },
+    });
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        try {
+          await channel.send({
+            type: 'broadcast',
+            event: 'handshake',
+            payload: { payloadString },
+          });
+        } catch (err) {
+          console.warn('[SupabaseSignalingChannel] Failed to send pairing handshake:', err);
+        } finally {
+          setTimeout(() => channel.unsubscribe(), 2000);
+        }
+      }
+    });
+  }
 }
 
 // Global singleton instance for app-wide signaling

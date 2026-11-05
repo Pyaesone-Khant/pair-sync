@@ -15,7 +15,7 @@ export interface PairingPayload {
  * Adheres to ADR 0001, ADR 0006 and CONTEXT.md.
  */
 export class PairDeviceUseCase {
-  private static readonly PAYLOAD_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  public static readonly PAYLOAD_TTL_MS = 15 * 60 * 1000; // 15 minutes fresh window
 
   constructor(
     private readonly localDeviceId: string,
