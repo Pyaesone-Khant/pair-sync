@@ -26,6 +26,12 @@
       }
     },
     "android": {
+      "package": "com.pairsync.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAAHm1WTD7W49gY8BLjtP9joDDhrFuedVk"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#0B0F17",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
