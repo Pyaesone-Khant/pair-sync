@@ -3,6 +3,7 @@ import {
   ISignalingPort,
   LocationTelemetryPayload,
   CallSignalPayload,
+  VideoFramePayload,
 } from '../../application/ports/signaling';
 import { CiphertextEnvelope } from '../../domain/messaging/ciphertext-envelope';
 
@@ -27,6 +28,7 @@ export class SupabaseSignalingChannel implements ISignalingPort {
   private locationListeners: Set<(payload: LocationTelemetryPayload) => void> = new Set();
   private peerGazeListeners: Set<(isViewing: boolean) => void> = new Set();
   private callSignalListeners: Set<(signal: CallSignalPayload) => void> = new Set();
+  private videoFrameListeners: Set<(payload: VideoFramePayload) => void> = new Set();
 
   constructor(config?: SupabaseSignalingConfig) {
     if (config?.supabaseClient) {
@@ -109,6 +111,9 @@ export class SupabaseSignalingChannel implements ISignalingPort {
       })
       .on('broadcast', { event: 'call_signal' }, ({ payload }) => {
         this.callSignalListeners.forEach((listener) => listener(payload));
+      })
+      .on('broadcast', { event: 'video_frame' }, ({ payload }) => {
+        this.videoFrameListeners.forEach((listener) => listener(payload));
       });
 
     channel.subscribe((status) => {
@@ -207,6 +212,23 @@ export class SupabaseSignalingChannel implements ISignalingPort {
   public onCallSignalReceived(callback: (signal: CallSignalPayload) => void): () => void {
     this.callSignalListeners.add(callback);
     return () => this.callSignalListeners.delete(callback);
+  }
+
+  /**
+   * Broadcasts a real-time camera video frame to the paired peer.
+   */
+  public async sendVideoFrame(payload: VideoFramePayload): Promise<void> {
+    if (!this.currentChannel) return;
+    await this.currentChannel.send({
+      type: 'broadcast',
+      event: 'video_frame',
+      payload,
+    });
+  }
+
+  public onVideoFrameReceived(callback: (payload: VideoFramePayload) => void): () => void {
+    this.videoFrameListeners.add(callback);
+    return () => this.videoFrameListeners.delete(callback);
   }
 
   /**

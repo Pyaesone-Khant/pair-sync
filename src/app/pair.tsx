@@ -9,7 +9,7 @@ import {
   Share,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,6 +29,7 @@ import { computeSafetyNumber } from '../presentation/utils/safety-number';
 import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 
 export default function PairingScreen() {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'myCode' | 'scanner'>('myCode');
   const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(null);
   const [safetyNumber, setSafetyNumber] = useState<string>('');
@@ -431,7 +432,10 @@ export default function PairingScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 16, 24) },
+          ]}
           showsVerticalScrollIndicator={false}>
           {activeTab === 'myCode' ? (
             <View style={styles.codeContainer}>
@@ -636,7 +640,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingBottom: 70,
   },
   header: {
     paddingHorizontal: 20,

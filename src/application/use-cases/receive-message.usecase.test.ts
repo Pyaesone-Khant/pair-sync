@@ -57,6 +57,7 @@ class DummySignalingPort implements ISignalingPort {
   async broadcastLocation(): Promise<void> {}
   async sendPeerGaze(): Promise<void> {}
   async sendCallSignal(): Promise<void> {}
+  async sendVideoFrame(): Promise<void> {}
   onEnvelopeReceived(): () => void {
     return () => {};
   }
@@ -67,6 +68,9 @@ class DummySignalingPort implements ISignalingPort {
     return () => {};
   }
   onCallSignalReceived(): () => void {
+    return () => {};
+  }
+  onVideoFrameReceived(): () => void {
     return () => {};
   }
 }
@@ -120,6 +124,22 @@ describe('ReceiveMessageUseCase (ADR 0004 & Signal Ratchet Decryption)', () => {
     const lastSaved = messageRepo.envelopes[messageRepo.envelopes.length - 1];
     expect(lastSaved.direction).toBe('incoming');
     expect(lastSaved.envelope.id).toBe(envelope.id);
+  });
+
+  it('decrypts plain prefix envelope via static decryptEnvelope helper', async () => {
+    const envelope = new CiphertextEnvelope({
+      id: 'plain-test',
+      senderDeviceId: 'peer-phone',
+      recipientDeviceId: 'local-phone',
+      iv: 'dummy-iv',
+      ciphertext: 'plain:Meeting you at the coffee shop',
+      sequenceNumber: 1,
+      ratchetPublicKey: 'dummy-key',
+      timestamp: Date.now(),
+    });
+
+    const decrypted = await ReceiveMessageUseCase.decryptEnvelope(envelope);
+    expect(decrypted).toBe('Meeting you at the coffee shop');
   });
 
   it('rejects envelope if senderDeviceId does not match active pair', async () => {

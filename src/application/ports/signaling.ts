@@ -22,6 +22,12 @@ export interface CallSignalPayload {
   timestamp: number;
 }
 
+export interface VideoFramePayload {
+  frame: string;
+  senderDeviceId: string;
+  timestamp: number;
+}
+
 /**
  * Port for the ephemeral blind relay and real-time signaling channel (Supabase Realtime).
  * Adheres to ADR 0002, ADR 0005, and CONTEXT.md.
@@ -34,10 +40,12 @@ export interface ISignalingPort {
   broadcastLocation(telemetry: LocationTelemetryPayload): Promise<void>;
   sendPeerGaze(isViewing: boolean): Promise<void>;
   sendCallSignal(signal: CallSignalPayload): Promise<void>;
+  sendVideoFrame(payload: VideoFramePayload): Promise<void>;
 
   onEnvelopeReceived(callback: (envelope: CiphertextEnvelope) => void): () => void;
   onLocationReceived(callback: (payload: LocationTelemetryPayload) => void): () => void;
   onPeerGazeReceived(callback: (isViewing: boolean) => void): () => void;
   onCallSignalReceived(callback: (signal: CallSignalPayload) => void): () => void;
+  onVideoFrameReceived(callback: (payload: VideoFramePayload) => void): () => void;
 }
 

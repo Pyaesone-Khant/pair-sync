@@ -53,6 +53,7 @@ class FakeSignalingPort implements ISignalingPort {
   async broadcastLocation(): Promise<void> {}
   async sendPeerGaze(): Promise<void> {}
   async sendCallSignal(): Promise<void> {}
+  async sendVideoFrame(): Promise<void> {}
   onEnvelopeReceived(): () => void {
     return () => {};
   }
@@ -63,6 +64,9 @@ class FakeSignalingPort implements ISignalingPort {
     return () => {};
   }
   onCallSignalReceived(): () => void {
+    return () => {};
+  }
+  onVideoFrameReceived(): () => void {
     return () => {};
   }
 }
