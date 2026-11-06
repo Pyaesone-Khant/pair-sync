@@ -38,6 +38,7 @@ export const CallModal: React.FC<CallModalProps> = ({
   const isCapturing = useRef<boolean>(false);
   const localDeviceId = usePairStore((state) => state.activePair?.localDeviceId ?? 'local-device');
   const [partnerFrame, setPartnerFrame] = useState<string | null>(null);
+  const [isSharingFrame, setIsSharingFrame] = useState<boolean>(false);
 
   const {
     status,
@@ -86,45 +87,54 @@ export const CallModal: React.FC<CallModalProps> = ({
     };
   }, [isVideo, status, localDeviceId]);
 
-  // Continuously capture and broadcast local camera frames to partner during video call
+  // Reset video frames on call end
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    if (isVideo && status === 'connected' && isCameraActive && permission?.granted) {
-      const signaling = getSignalingChannel();
-
-      const captureAndBroadcast = async () => {
-        if (isCapturing.current || !cameraRef.current) return;
-        isCapturing.current = true;
-        try {
-          const picture = await cameraRef.current.takePictureAsync({
-            quality: 0.1,
-            base64: true,
-            skipProcessing: true,
-            shutterSound: false,
-          });
-          if (picture?.base64) {
-            await signaling.sendVideoFrame({
-              frame: picture.base64,
-              senderDeviceId: localDeviceId,
-              timestamp: Date.now(),
-            });
-          }
-        } catch {
-          // Gracefully continue next frame tick
-        } finally {
-          isCapturing.current = false;
-        }
-      };
-
-      // Broadcast at ~1.3 fps
-      interval = setInterval(captureAndBroadcast, 750);
+    if (status === 'ended' || status === 'idle') {
+      setPartnerFrame(null);
+      setIsSharingFrame(false);
     }
+  }, [status]);
 
+  // On-demand crisp snapshot sharing without continuous hardware photo interruption or screen flicker
+  const handleShareSnapshot = async () => {
+    if (isCapturing.current || !cameraRef.current || !isCameraActive) return;
+    isCapturing.current = true;
+    setIsSharingFrame(true);
+    try {
+      const picture = await cameraRef.current.takePictureAsync({
+        quality: 0.15,
+        base64: true,
+        skipProcessing: false,
+        shutterSound: false,
+      });
+      if (picture?.base64) {
+        const signaling = getSignalingChannel();
+        await signaling.sendVideoFrame({
+          frame: picture.base64,
+          senderDeviceId: localDeviceId,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (err) {
+      console.warn('[CallModal] Snapshot capture error:', err);
+    } finally {
+      isCapturing.current = false;
+      setIsSharingFrame(false);
+    }
+  };
+
+  // Broadcast an initial camera snapshot once the video call connects and camera settles
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (isVideo && status === 'connected' && isCameraActive && permission?.granted) {
+      timer = setTimeout(() => {
+        handleShareSnapshot();
+      }, 1200);
+    }
     return () => {
-      if (interval) clearInterval(interval);
+      if (timer) clearTimeout(timer);
     };
-  }, [isVideo, status, isCameraActive, permission?.granted, localDeviceId]);
+  }, [isVideo, status, isCameraActive, permission?.granted]);
 
   // Call duration timer
   useEffect(() => {
@@ -210,12 +220,20 @@ export const CallModal: React.FC<CallModalProps> = ({
             <View style={styles.videoStreamContainer}>
               <View style={styles.videoStreamBackground}>
                 {partnerFrame ? (
-                  <Image
-                    source={{ uri: `data:image/jpeg;base64,${partnerFrame}` }}
-                    style={StyleSheet.absoluteFill}
-                    contentFit="cover"
-                    transition={100}
-                  />
+                  <>
+                    <Image
+                      source={{ uri: `data:image/jpeg;base64,${partnerFrame}` }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                      transition={150}
+                    />
+                    <View style={styles.remoteLiveOverlay}>
+                      <View style={styles.remoteLivePill}>
+                        <View style={styles.hdLiveDot} />
+                        <Text style={styles.remoteLiveText}>{partnerName} • Live Feed</Text>
+                      </View>
+                    </View>
+                  </>
                 ) : (
                   <View style={styles.remotePartnerCard}>
                     <View style={styles.remoteAvatarCircle}>
@@ -228,15 +246,29 @@ export const CallModal: React.FC<CallModalProps> = ({
                     <View style={styles.hdStreamBadge}>
                       <View style={styles.hdLiveDot} />
                       <Text style={styles.hdStreamText}>
-                        {status === 'connected' ? 'LIVE HD • P2P WebRTC' : 'Connecting Stream...'}
+                        {status === 'connected' ? 'LIVE HD • P2P Encrypted' : 'Connecting Stream...'}
                       </Text>
                     </View>
 
                     <Text style={styles.streamSpecsText}>
                       {status === 'connected'
-                        ? 'Waiting for partner video stream...'
+                        ? 'Direct P2P Video Link Active'
                         : 'Negotiating cipher suite'}
                     </Text>
+
+                    {status === 'connected' && (
+                      <TouchableOpacity
+                        style={styles.shareSnapshotActionBtn}
+                        onPress={handleShareSnapshot}
+                        disabled={isSharingFrame}
+                        activeOpacity={0.8}
+                        accessibilityLabel="Share your camera feed">
+                        <Ionicons name="camera" size={15} color="#38BDF8" />
+                        <Text style={styles.shareSnapshotActionText}>
+                          {isSharingFrame ? 'Sharing Camera View...' : 'Share Camera View'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
               </View>
@@ -276,11 +308,19 @@ export const CallModal: React.FC<CallModalProps> = ({
                       ref={cameraRef}
                       style={StyleSheet.absoluteFill}
                       facing={cameraFacing}
+                      pictureSize="640x480"
                     />
                     <View style={styles.pipOverlayHeader}>
                       <View style={styles.pipDot} />
                       <Text style={styles.pipText}>You</Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.pipSnapBtn}
+                      onPress={handleShareSnapshot}
+                      activeOpacity={0.8}
+                      accessibilityLabel="Send snapshot">
+                      <Ionicons name="camera" size={13} color="#FFFFFF" />
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.pipFlipBtn}
                       onPress={handleFlipCamera}
@@ -387,23 +427,23 @@ export const CallModal: React.FC<CallModalProps> = ({
                 <Text style={styles.controlBtnLabel}>Flip</Text>
               </TouchableOpacity>
 
-              {/* Video Mute / Cam Off */}
+              {/* Share / Update Video Frame */}
               <TouchableOpacity
                 style={[
                   styles.controlRoundBtn,
-                  !isCameraActive && styles.controlRoundBtnActive,
+                  isSharingFrame && styles.controlRoundBtnActive,
                 ]}
-                onPress={handleToggleCamera}
+                onPress={handleShareSnapshot}
                 activeOpacity={0.7}
-                disabled={status === 'ended'}
-                accessibilityLabel="Toggle Camera">
+                disabled={status === 'ended' || !isCameraActive}
+                accessibilityLabel="Share camera view">
                 <Ionicons
-                  name={isCameraActive ? 'videocam' : 'videocam-off'}
+                  name={isSharingFrame ? 'sync-outline' : 'camera-outline'}
                   size={22}
-                  color={isCameraActive ? '#38BDF8' : '#EF4444'}
+                  color={isSharingFrame ? '#38BDF8' : '#F8FAFC'}
                 />
                 <Text style={styles.controlBtnLabel}>
-                  {isCameraActive ? 'Video' : 'Cam Off'}
+                  {isSharingFrame ? 'Sending' : 'Share View'}
                 </Text>
               </TouchableOpacity>
 
@@ -630,6 +670,44 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
   },
+  shareSnapshotActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    marginTop: 6,
+  },
+  shareSnapshotActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#38BDF8',
+  },
+  remoteLiveOverlay: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+  },
+  remoteLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  remoteLiveText: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   videoDurationPill: {
     position: 'absolute',
     top: 16,
@@ -699,6 +777,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 6,
     right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipSnapBtn: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
     width: 26,
     height: 26,
     borderRadius: 13,

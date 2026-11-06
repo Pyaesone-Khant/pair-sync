@@ -330,11 +330,17 @@ export default function ChatScreen() {
 		}
 	};
 
-	// Clean, tight bottom clearance directly above the native bottom navigation bar.
-	// NativeTabs already bounds the screen view above the native tab bar on both iOS and Android.
-	// Standard 10-12px padding eliminates the excessive empty gap and aligns with Vercel design standards.
+	// Clean, responsive bottom clearance:
+	// - On iOS: when keyboard is hidden, UITabBar overlays the bottom ~83pt (49pt tab bar + 34pt safe area).
+	//   We pad by Math.max(insets.bottom + 52, 88) to set the chat input comfortably above the native navigation bar.
+	//   When keyboard is visible, KeyboardAvoidingView pushes the composer above the keyboard, so 10px is optimal.
+	// - On Android: NativeTabs already positions the Fragment container above BottomNavigationView, so 10px sits snugly above it.
 	const composerBottomPadding =
-		Platform.OS === "ios" ? (isKeyboardVisible ? 48 : 52) : 10;
+		Platform.OS === "ios"
+			? isKeyboardVisible
+				? 10
+				: Math.max(insets.bottom + 52, 88)
+			: 10;
 
 	if (!activePair) {
 		return (

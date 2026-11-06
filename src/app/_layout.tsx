@@ -198,7 +198,7 @@ export default function TabLayout() {
                 getSignalingChannel().sendCallSignal({
                   type: 'hangup',
                   callId,
-                  senderDeviceId: 'local-device',
+                  senderDeviceId: activePair?.localDeviceId ?? 'local-device',
                   timestamp: Date.now(),
                 });
               }}
@@ -206,7 +206,7 @@ export default function TabLayout() {
                 getSignalingChannel().sendCallSignal({
                   type: 'answer',
                   callId,
-                  senderDeviceId: 'local-device',
+                  senderDeviceId: activePair?.localDeviceId ?? 'local-device',
                   timestamp: Date.now(),
                 });
               }}
