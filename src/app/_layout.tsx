@@ -163,8 +163,16 @@ export default function TabLayout() {
       await signaling.joinPairRoom(roomJoined);
 
       callUnsub = signaling.onCallSignalReceived((signal) => {
+        if (!activePair || signal.senderDeviceId === activePair.localDeviceId) return;
         if (signal.type === 'offer') {
-          useCallStore.getState().receiveIncomingCall(signal.callId, 'My Partner', signal.isVideo);
+          const currentCall = useCallStore.getState();
+          if (currentCall.status === 'incoming_ringing' && currentCall.callId === signal.callId) {
+            if (signal.sdp) {
+              currentCall.setIncomingSdp(signal.sdp);
+            }
+          } else if (currentCall.status === 'idle') {
+            useCallStore.getState().receiveIncomingCall(signal.callId, 'Partner', signal.isVideo, signal.sdp);
+          }
         } else if (signal.type === 'answer') {
           useCallStore.getState().acceptCall();
         } else if (signal.type === 'hangup' || signal.type === 'reject') {

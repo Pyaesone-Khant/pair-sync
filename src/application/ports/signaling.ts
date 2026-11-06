@@ -9,7 +9,7 @@ export interface LocationTelemetryPayload {
   timestamp?: number;
 }
 
-export type CallSignalType = 'offer' | 'answer' | 'ice-candidate' | 'hangup' | 'reject';
+export type CallSignalType = 'offer' | 'answer' | 'ice-candidate' | 'hangup' | 'reject' | 'ready';
 
 export interface CallSignalPayload {
   type: CallSignalType;

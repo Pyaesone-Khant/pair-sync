@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,13 +6,14 @@ import {
   Modal,
   TouchableOpacity,
   StatusBar,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { RTCView } from 'react-native-webrtc';
 import { useCallStore } from '../stores/call-store';
 import { usePairStore } from '../stores/pair-store';
+import { useWebRTCCall } from '../hooks/useWebRTCCall';
 import { DesignTokens } from '../../constants/theme';
 
 export interface CallModalProps {
@@ -22,8 +23,8 @@ export interface CallModalProps {
 
 /**
  * End-to-End Encrypted WebRTC In-Call HUD Modal.
- * Supports both pristine private Voice Calls and high-fidelity Video Calls with
- * Picture-in-Picture (PiP) local camera preview, remote partner video container,
+ * Supports private voice calls and high-fidelity P2P video streaming using native RTCView,
+ * Picture-in-Picture (PiP) local camera preview, remote partner video feed,
  * camera flip, mic/video toggles, and duration timers.
  * Strictly adheres to ADR 0005, frontend-design, and Vercel design principles.
  */
@@ -32,7 +33,6 @@ export const CallModal: React.FC<CallModalProps> = ({
   onAnswerSignal,
 }) => {
   const insets = useSafeAreaInsets();
-  const cameraRef = useRef<CameraView>(null);
   const localDeviceId = usePairStore((state) => state.activePair?.localDeviceId ?? 'local-device');
 
   const {
@@ -40,28 +40,39 @@ export const CallModal: React.FC<CallModalProps> = ({
     callId,
     partnerName,
     isVideo,
+    isCaller,
+    incomingSdp,
     durationSeconds,
-    isMuted,
     isSpeakerOn,
     acceptCall,
     declineCall,
     endCall,
-    toggleMute,
     toggleSpeaker,
     incrementDuration,
     reset,
   } = useCallStore();
 
-  const [permission, requestPermission] = useCameraPermissions();
-  const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
-  const [isCameraActive, setIsCameraActive] = useState<boolean>(true);
-
-  // Auto-request camera permissions when entering video call
-  useEffect(() => {
-    if (isVideo && status !== 'idle' && !permission?.granted) {
-      requestPermission();
-    }
-  }, [isVideo, status, permission?.granted, requestPermission]);
+  const {
+    localStream,
+    remoteStream,
+    isFrontCamera,
+    isAudioMuted,
+    isVideoMuted,
+    switchCamera,
+    toggleAudio,
+    toggleVideo,
+    hangupCall,
+  } = useWebRTCCall({
+    callId,
+    status,
+    isVideo,
+    isCaller,
+    localDeviceId,
+    incomingSdp,
+    onEndCall: () => {
+      endCall();
+    },
+  });
 
   // Call duration timer
   useEffect(() => {
@@ -96,6 +107,7 @@ export const CallModal: React.FC<CallModalProps> = ({
   };
 
   const handleEndOrDecline = () => {
+    hangupCall();
     if (callId && onHangupSignal) {
       onHangupSignal(callId);
     }
@@ -107,18 +119,10 @@ export const CallModal: React.FC<CallModalProps> = ({
   };
 
   const handleAnswer = () => {
+    acceptCall();
     if (callId && onAnswerSignal) {
       onAnswerSignal(callId);
     }
-    acceptCall();
-  };
-
-  const handleFlipCamera = () => {
-    setCameraFacing((prev) => (prev === 'front' ? 'back' : 'front'));
-  };
-
-  const handleToggleCamera = () => {
-    setIsCameraActive((prev) => !prev);
   };
 
   return (
@@ -145,29 +149,39 @@ export const CallModal: React.FC<CallModalProps> = ({
           <View style={styles.videoBodyContainer}>
             {/* Main Remote Partner Video Viewport */}
             <View style={styles.videoStreamContainer}>
-              <View style={styles.videoStreamBackground}>
-                <View style={styles.remotePartnerCard}>
-                  <View style={styles.remoteAvatarCircle}>
-                    <Text style={styles.remoteAvatarText}>
-                      {partnerName.charAt(0).toUpperCase()}
+              {remoteStream ? (
+                <RTCView
+                  streamURL={remoteStream.toURL()}
+                  style={StyleSheet.absoluteFill}
+                  objectFit="cover"
+                  zOrder={0}
+                  mirror={false}
+                />
+              ) : (
+                <View style={styles.videoStreamBackground}>
+                  <View style={styles.remotePartnerCard}>
+                    <View style={styles.remoteAvatarCircle}>
+                      <Text style={styles.remoteAvatarText}>
+                        {partnerName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={styles.remotePartnerName}>{partnerName}</Text>
+
+                    <View style={styles.hdStreamBadge}>
+                      <ActivityIndicator size="small" color="#38BDF8" style={{ marginRight: 6 }} />
+                      <Text style={styles.hdStreamText}>
+                        {status === 'connected' ? 'Connecting video stream...' : 'Calling partner...'}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.streamSpecsText}>
+                      {status === 'connected'
+                        ? 'Negotiating WebRTC P2P link'
+                        : 'Encrypted via DTLS-SRTP'}
                     </Text>
                   </View>
-                  <Text style={styles.remotePartnerName}>{partnerName}</Text>
-
-                  <View style={styles.hdStreamBadge}>
-                    <View style={styles.hdLiveDot} />
-                    <Text style={styles.hdStreamText}>
-                      {status === 'connected' ? 'LIVE • Direct P2P Video' : 'Connecting Call...'}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.streamSpecsText}>
-                    {status === 'connected'
-                      ? 'Direct P2P Link Active'
-                      : 'Negotiating cipher suite'}
-                  </Text>
                 </View>
-              </View>
+              )}
 
               {/* Status Duration Indicator on Video View */}
               <View style={styles.videoDurationPill}>
@@ -198,12 +212,14 @@ export const CallModal: React.FC<CallModalProps> = ({
 
               {/* Floating Local PiP Camera Self-View */}
               <View style={styles.pipContainer}>
-                {isCameraActive && permission?.granted ? (
+                {localStream && !isVideoMuted ? (
                   <>
-                    <CameraView
-                      ref={cameraRef}
+                    <RTCView
+                      streamURL={localStream.toURL()}
                       style={StyleSheet.absoluteFill}
-                      facing={cameraFacing}
+                      objectFit="cover"
+                      zOrder={1}
+                      mirror={isFrontCamera}
                     />
                     <View style={styles.pipOverlayHeader}>
                       <View style={styles.pipDot} />
@@ -211,7 +227,7 @@ export const CallModal: React.FC<CallModalProps> = ({
                     </View>
                     <TouchableOpacity
                       style={styles.pipFlipBtn}
-                      onPress={handleFlipCamera}
+                      onPress={switchCamera}
                       activeOpacity={0.8}
                       accessibilityLabel="Flip selfie camera">
                       <Ionicons name="camera-reverse-outline" size={14} color="#FFFFFF" />
@@ -220,20 +236,13 @@ export const CallModal: React.FC<CallModalProps> = ({
                 ) : (
                   <View style={styles.pipCameraOff}>
                     <Ionicons
-                      name={!permission?.granted ? 'camera-outline' : 'videocam-off'}
+                      name="videocam-off"
                       size={22}
                       color="#64748B"
                     />
                     <Text style={styles.pipCameraOffText}>
-                      {!permission?.granted ? 'No Camera' : 'Cam Off'}
+                      Cam Off
                     </Text>
-                    {!permission?.granted && (
-                      <TouchableOpacity
-                        style={styles.pipEnableBtn}
-                        onPress={requestPermission}>
-                        <Text style={styles.pipEnableBtnText}>Allow</Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 )}
               </View>
@@ -307,9 +316,9 @@ export const CallModal: React.FC<CallModalProps> = ({
               {/* Flip Camera */}
               <TouchableOpacity
                 style={styles.controlRoundBtn}
-                onPress={handleFlipCamera}
+                onPress={switchCamera}
                 activeOpacity={0.7}
-                disabled={status === 'ended' || !isCameraActive}
+                disabled={status === 'ended' || isVideoMuted}
                 accessibilityLabel="Flip Camera">
                 <Ionicons name="camera-reverse-outline" size={22} color="#F8FAFC" />
                 <Text style={styles.controlBtnLabel}>Flip</Text>
@@ -319,19 +328,19 @@ export const CallModal: React.FC<CallModalProps> = ({
               <TouchableOpacity
                 style={[
                   styles.controlRoundBtn,
-                  !isCameraActive && styles.controlRoundBtnActive,
+                  isVideoMuted && styles.controlRoundBtnActive,
                 ]}
-                onPress={handleToggleCamera}
+                onPress={toggleVideo}
                 activeOpacity={0.7}
                 disabled={status === 'ended'}
                 accessibilityLabel="Toggle Camera Video">
                 <Ionicons
-                  name={isCameraActive ? 'videocam' : 'videocam-off'}
+                  name={isVideoMuted ? 'videocam-off' : 'videocam'}
                   size={22}
-                  color={isCameraActive ? '#38BDF8' : '#EF4444'}
+                  color={isVideoMuted ? '#EF4444' : '#38BDF8'}
                 />
                 <Text style={styles.controlBtnLabel}>
-                  {isCameraActive ? 'Video On' : 'Video Off'}
+                  {isVideoMuted ? 'Video Off' : 'Video On'}
                 </Text>
               </TouchableOpacity>
 
@@ -354,19 +363,19 @@ export const CallModal: React.FC<CallModalProps> = ({
               <TouchableOpacity
                 style={[
                   styles.controlRoundBtn,
-                  isMuted && styles.controlRoundBtnActive,
+                  isAudioMuted && styles.controlRoundBtnActive,
                 ]}
-                onPress={toggleMute}
+                onPress={toggleAudio}
                 activeOpacity={0.7}
                 disabled={status === 'ended'}
                 accessibilityLabel="Mute Microphone">
                 <Ionicons
-                  name={isMuted ? 'mic-off' : 'mic'}
+                  name={isAudioMuted ? 'mic-off' : 'mic'}
                   size={22}
-                  color={isMuted ? '#EF4444' : '#F8FAFC'}
+                  color={isAudioMuted ? '#EF4444' : '#F8FAFC'}
                 />
                 <Text style={styles.controlBtnLabel}>
-                  {isMuted ? 'Muted' : 'Mic'}
+                  {isAudioMuted ? 'Muted' : 'Mic'}
                 </Text>
               </TouchableOpacity>
 
@@ -395,19 +404,19 @@ export const CallModal: React.FC<CallModalProps> = ({
               <TouchableOpacity
                 style={[
                   styles.controlRoundBtn,
-                  isMuted && styles.controlRoundBtnActive,
+                  isAudioMuted && styles.controlRoundBtnActive,
                 ]}
-                onPress={toggleMute}
+                onPress={toggleAudio}
                 activeOpacity={0.7}
                 disabled={status === 'ended'}
                 accessibilityLabel="Mute Microphone">
                 <Ionicons
-                  name={isMuted ? 'mic-off' : 'mic'}
+                  name={isAudioMuted ? 'mic-off' : 'mic'}
                   size={24}
-                  color={isMuted ? '#EF4444' : '#F8FAFC'}
+                  color={isAudioMuted ? '#EF4444' : '#F8FAFC'}
                 />
                 <Text style={styles.controlBtnLabel}>
-                  {isMuted ? 'Muted' : 'Mute'}
+                  {isAudioMuted ? 'Muted' : 'Mute'}
                 </Text>
               </TouchableOpacity>
 
@@ -611,6 +620,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
+    zIndex: 10,
   },
   pipDot: {
     width: 5,
@@ -633,6 +643,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
   },
   pipCameraOff: {
     flex: 1,
@@ -646,18 +657,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94A3B8',
     fontWeight: '500',
-  },
-  pipEnableBtn: {
-    backgroundColor: '#38BDF8',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: 2,
-  },
-  pipEnableBtnText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#0B0F17',
   },
   centerSection: {
     alignItems: 'center',

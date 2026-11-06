@@ -12,12 +12,15 @@ export interface CallStoreState {
   callId: string | null;
   partnerName: string;
   isVideo: boolean;
+  isCaller: boolean;
+  incomingSdp: string | null;
   durationSeconds: number;
   isMuted: boolean;
   isSpeakerOn: boolean;
 
   startOutgoingCall: (partnerName: string, isVideo?: boolean) => string;
-  receiveIncomingCall: (callId: string, partnerName: string, isVideo?: boolean) => void;
+  receiveIncomingCall: (callId: string, partnerName: string, isVideo?: boolean, sdp?: string) => void;
+  setIncomingSdp: (sdp: string) => void;
   acceptCall: () => void;
   declineCall: () => void;
   endCall: () => void;
@@ -32,6 +35,8 @@ export const useCallStore = create<CallStoreState>((set) => ({
   callId: null,
   partnerName: 'My Partner',
   isVideo: false,
+  isCaller: false,
+  incomingSdp: null,
   durationSeconds: 0,
   isMuted: false,
   isSpeakerOn: false,
@@ -43,6 +48,8 @@ export const useCallStore = create<CallStoreState>((set) => ({
       callId,
       partnerName,
       isVideo,
+      isCaller: true,
+      incomingSdp: null,
       durationSeconds: 0,
       isMuted: false,
       isSpeakerOn: false,
@@ -50,16 +57,22 @@ export const useCallStore = create<CallStoreState>((set) => ({
     return callId;
   },
 
-  receiveIncomingCall: (callId: string, partnerName: string, isVideo = false) => {
+  receiveIncomingCall: (callId: string, partnerName: string, isVideo = false, sdp?: string) => {
     set({
       status: 'incoming_ringing',
       callId,
       partnerName,
       isVideo,
+      isCaller: false,
+      incomingSdp: sdp ?? null,
       durationSeconds: 0,
       isMuted: false,
       isSpeakerOn: false,
     });
+  },
+
+  setIncomingSdp: (sdp: string) => {
+    set({ incomingSdp: sdp });
   },
 
   acceptCall: () => {
@@ -92,6 +105,8 @@ export const useCallStore = create<CallStoreState>((set) => ({
       callId: null,
       partnerName: 'My Partner',
       isVideo: false,
+      isCaller: false,
+      incomingSdp: null,
       durationSeconds: 0,
       isMuted: false,
       isSpeakerOn: false,

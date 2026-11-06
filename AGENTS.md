@@ -156,3 +156,22 @@ xcrun devicectl device process launch \
   adb kill-server && adb start-server && adb devices
   ```
 
+---
+
+## 7. WebRTC P2P Audio & Video Calling Architecture (ADR 0005)
+
+### Pinned Dependency Standard
+* **Package**: `react-native-webrtc@124.0.8`
+* **iOS Pod**: `JitsiWebRTC (~> 124.0.2)`
+* **Crucial Rule**: Never upgrade to unverified versions without verifying CocoaPods trunk specs (e.g., 155.0.x is not published to CocoaPods trunk and will fail `pod install`).
+
+### Real-Time Video Streaming Pipeline
+* **Native Video Rendering**: Video calls stream live peer-to-peer RTP video rendered via `<RTCView streamURL={stream.toURL()} />` from `react-native-webrtc`.
+* **Zero Image Hacks**: Never use image/snapshot polling or static image overlays for video calls.
+* **Stacking (`zOrder`)**:
+  * Remote stream (full viewport): `zOrder={0}`
+  * Local self-view (floating Picture-in-Picture): `zOrder={1}`
+* **Camera Switching**: Invokes `videoTrack._switchCamera()` directly to flip local preview and outgoing RTP stream instantaneously without SDP renegotiation.
+* **ICE Candidate Queueing**: Always queue incoming ICE candidates until `setRemoteDescription` resolves to prevent `"Remote description not set"` runtime exceptions.
+
+

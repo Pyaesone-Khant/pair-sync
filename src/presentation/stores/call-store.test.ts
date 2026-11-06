@@ -24,14 +24,19 @@ describe('useCallStore (ADR 0005 WebRTC Call Session)', () => {
     expect(state.callId).not.toBeNull();
   });
 
-  it('transitions to incoming_ringing on receiveIncomingCall', () => {
-    useCallStore.getState().receiveIncomingCall('call-abc-123', 'Partner Bob', true);
+  it('transitions to incoming_ringing on receiveIncomingCall and updates incomingSdp', () => {
+    useCallStore.getState().receiveIncomingCall('call-abc-123', 'Partner Bob', true, 'v=0 sdp-data');
 
-    const state = useCallStore.getState();
+    let state = useCallStore.getState();
     expect(state.status).toBe('incoming_ringing');
     expect(state.callId).toBe('call-abc-123');
     expect(state.partnerName).toBe('Partner Bob');
     expect(state.isVideo).toBe(true);
+    expect(state.incomingSdp).toBe('v=0 sdp-data');
+
+    useCallStore.getState().setIncomingSdp('v=0 sdp-updated');
+    state = useCallStore.getState();
+    expect(state.incomingSdp).toBe('v=0 sdp-updated');
   });
 
   it('transitions to connected on acceptCall and increments duration', () => {
