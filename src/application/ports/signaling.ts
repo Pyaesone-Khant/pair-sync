@@ -9,7 +9,7 @@ export interface LocationTelemetryPayload {
   timestamp?: number;
 }
 
-export type CallSignalType = 'offer' | 'answer' | 'ice-candidate' | 'hangup' | 'reject' | 'ready';
+export type CallSignalType = 'offer' | 'answer' | 'ice-candidate' | 'hangup' | 'reject' | 'ready' | 'video-state';
 
 export interface CallSignalPayload {
   type: CallSignalType;
@@ -19,6 +19,7 @@ export interface CallSignalPayload {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   candidate?: any;
   isVideo?: boolean;
+  isVideoMuted?: boolean;
   timestamp: number;
 }
 

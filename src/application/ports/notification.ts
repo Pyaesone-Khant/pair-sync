@@ -2,6 +2,7 @@ export interface NotificationPayload {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  sound?: boolean | string;
 }
 
 export interface NotificationResponsePayload {

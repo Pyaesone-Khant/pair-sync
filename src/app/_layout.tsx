@@ -16,6 +16,7 @@ import { useCallStore } from '../presentation/stores/call-store';
 import { usePairStore } from '../presentation/stores/pair-store';
 import { usePinpointStore } from '../presentation/stores/pinpoint-store';
 import { getNotificationService } from '../infrastructure/notifications/expo-notification-service';
+import { getSoundService } from '../infrastructure/audio/sound-service';
 import { getSupabaseAuthService } from '../infrastructure/auth/supabase-auth-service';
 import { getSignalingChannel } from '../infrastructure/network/supabase-signaling-channel';
 import { DesignTokens } from '../constants/theme';
@@ -155,6 +156,7 @@ export default function TabLayout() {
     if (!isAuthenticated || !activePair) return;
 
     let callUnsub: (() => void) | null = null;
+    let envelopeUnsub: (() => void) | null = null;
     let roomJoined: string | null = null;
 
     async function initSignaling() {
@@ -179,14 +181,50 @@ export default function TabLayout() {
           useCallStore.getState().endCall();
         }
       });
+
+      // Global incoming message listener for sound & notifications (ADR 0004, ADR 0006)
+      envelopeUnsub = signaling.onEnvelopeReceived(async (envelope) => {
+        if (!activePair || envelope.senderDeviceId === activePair.localDeviceId) return;
+        console.log('[RootLayout] Incoming encrypted envelope received');
+
+        // Play crisp chime & haptic feedback
+        await getSoundService().playMessageChime();
+
+        // Dispatch local notification banner
+        await getNotificationService().sendLocalNotification({
+          title: 'Partner',
+          body: 'New encrypted message',
+          data: { type: 'chat_message', id: envelope.id },
+          sound: true,
+        });
+      });
     }
 
     initSignaling();
 
     return () => {
       if (callUnsub) callUnsub();
+      if (envelopeUnsub) envelopeUnsub();
     };
   }, [isAuthenticated, activePair]);
+
+  // Reactive Incoming Call Ringtone & Telephony Alert Controller (ADR 0005)
+  const callStatus = useCallStore((state) => state.status);
+  const isVideoCall = useCallStore((state) => state.isVideo);
+
+  useEffect(() => {
+    if (callStatus === 'incoming_ringing') {
+      getSoundService().startIncomingRingtone();
+      getNotificationService().sendLocalNotification({
+        title: isVideoCall ? 'Incoming Video Call 📹' : 'Incoming Audio Call 📞',
+        body: 'Partner is calling you. Tap to answer.',
+        data: { type: 'call' },
+        sound: true,
+      });
+    } else {
+      getSoundService().stopIncomingRingtone();
+    }
+  }, [callStatus, isVideoCall]);
 
   return (
     <SafeAreaProvider>

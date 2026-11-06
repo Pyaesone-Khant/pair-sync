@@ -14,6 +14,7 @@ import { RTCView } from 'react-native-webrtc';
 import { useCallStore } from '../stores/call-store';
 import { usePairStore } from '../stores/pair-store';
 import { useWebRTCCall } from '../hooks/useWebRTCCall';
+import { getSoundService } from '../../infrastructure/audio/sound-service';
 import { DesignTokens } from '../../constants/theme';
 
 export interface CallModalProps {
@@ -58,6 +59,7 @@ export const CallModal: React.FC<CallModalProps> = ({
     isFrontCamera,
     isAudioMuted,
     isVideoMuted,
+    isPartnerVideoMuted,
     switchCamera,
     toggleAudio,
     toggleVideo,
@@ -107,6 +109,7 @@ export const CallModal: React.FC<CallModalProps> = ({
   };
 
   const handleEndOrDecline = () => {
+    getSoundService().stopIncomingRingtone();
     hangupCall();
     if (callId && onHangupSignal) {
       onHangupSignal(callId);
@@ -119,6 +122,7 @@ export const CallModal: React.FC<CallModalProps> = ({
   };
 
   const handleAnswer = () => {
+    getSoundService().stopIncomingRingtone();
     acceptCall();
     if (callId && onAnswerSignal) {
       onAnswerSignal(callId);
@@ -149,7 +153,7 @@ export const CallModal: React.FC<CallModalProps> = ({
           <View style={styles.videoBodyContainer}>
             {/* Main Remote Partner Video Viewport */}
             <View style={styles.videoStreamContainer}>
-              {remoteStream ? (
+              {remoteStream && !isPartnerVideoMuted ? (
                 <RTCView
                   streamURL={remoteStream.toURL()}
                   style={StyleSheet.absoluteFill}
@@ -157,6 +161,26 @@ export const CallModal: React.FC<CallModalProps> = ({
                   zOrder={0}
                   mirror={false}
                 />
+              ) : remoteStream && isPartnerVideoMuted ? (
+                <View style={styles.videoStreamBackground}>
+                  <View style={styles.remotePartnerCard}>
+                    <View style={styles.remoteAvatarCircle}>
+                      <Text style={styles.remoteAvatarText}>
+                        {partnerName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={styles.remotePartnerName}>{partnerName}</Text>
+
+                    <View style={styles.camMutedBadge}>
+                      <Ionicons name="videocam-off" size={14} color="#F59E0B" />
+                      <Text style={styles.camMutedText}>Partner turned off camera</Text>
+                    </View>
+
+                    <Text style={styles.streamSpecsText}>
+                      Audio remains live & E2EE encrypted
+                    </Text>
+                  </View>
+                </View>
               ) : (
                 <View style={styles.videoStreamBackground}>
                   <View style={styles.remotePartnerCard}>
@@ -561,6 +585,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#10B981',
+  },
+  camMutedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  camMutedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#F59E0B',
   },
   streamSpecsText: {
     fontSize: 12,

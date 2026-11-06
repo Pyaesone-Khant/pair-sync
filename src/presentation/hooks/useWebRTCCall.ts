@@ -35,6 +35,7 @@ export interface UseWebRTCCallResult {
   isFrontCamera: boolean;
   isAudioMuted: boolean;
   isVideoMuted: boolean;
+  isPartnerVideoMuted: boolean;
   switchCamera: () => void;
   toggleAudio: () => void;
   toggleVideo: () => void;
@@ -62,6 +63,7 @@ export function useWebRTCCall({
   const [isFrontCamera, setIsFrontCamera] = useState<boolean>(true);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(false);
   const [isVideoMuted, setIsVideoMuted] = useState<boolean>(false);
+  const [isPartnerVideoMuted, setIsPartnerVideoMuted] = useState<boolean>(false);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,6 +130,7 @@ export function useWebRTCCall({
     hasRemoteDescriptionRef.current = false;
     initializedCallIdRef.current = null;
     setIsConnected(false);
+    setIsPartnerVideoMuted(false);
   }, [remoteStream]);
 
   // Request Android runtime permissions
@@ -406,6 +409,12 @@ export function useWebRTCCall({
         }
       }
 
+      // Video State: Peer toggled camera on/off
+      if (signal.type === 'video-state') {
+        console.log(`[useWebRTCCall] Partner camera state changed: isVideoMuted=${signal.isVideoMuted}`);
+        setIsPartnerVideoMuted(Boolean(signal.isVideoMuted));
+      }
+
       // Hangup / Reject
       if (signal.type === 'hangup' || signal.type === 'reject') {
         console.log('[useWebRTCCall] Peer terminated the call');
@@ -455,11 +464,24 @@ export function useWebRTCCall({
     if (localStreamRef.current) {
       const videoTrack = localStreamRef.current.getVideoTracks()[0];
       if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoMuted(!videoTrack.enabled);
+        const nextEnabled = !videoTrack.enabled;
+        videoTrack.enabled = nextEnabled;
+        setIsVideoMuted(!nextEnabled);
+
+        if (callId) {
+          getSignalingChannel().sendCallSignal({
+            type: 'video-state',
+            callId,
+            senderDeviceId: localDeviceId,
+            isVideoMuted: !nextEnabled,
+            timestamp: Date.now(),
+          }).catch((err) => {
+            console.warn('[useWebRTCCall] Error sending video-state signal:', err);
+          });
+        }
       }
     }
-  }, []);
+  }, [callId, localDeviceId]);
 
   const hangupCall = useCallback(() => {
     if (callId) {
@@ -481,6 +503,7 @@ export function useWebRTCCall({
     isFrontCamera,
     isAudioMuted,
     isVideoMuted,
+    isPartnerVideoMuted,
     switchCamera,
     toggleAudio,
     toggleVideo,

@@ -125,7 +125,7 @@ export class ExpoNotificationService implements INotificationPort {
         title: payload.title,
         body: payload.body,
         data: payload.data,
-        sound: true,
+        sound: payload.sound ?? true,
       },
       trigger: null,
     });
